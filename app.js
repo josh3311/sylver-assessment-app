@@ -1427,9 +1427,8 @@ function exportToPDF() {
     }
     if (!kpiBody.innerHTML) kpiBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#6b7280;">No KPI metrics recorded</td></tr>';
 
-    // --- Show the hidden print element ---
+    // --- Prepare the always-rendered print element for capture ---
     clearPrintCharts(); // destroy any stale charts from previous exports
-    printEl.style.display = 'block';
 
     // --- Render static print-specific charts ---
     const pc = []; // print charts to destroy after export
@@ -1523,15 +1522,11 @@ function exportToPDF() {
             .from(printEl)
             .save()
             .then(() => {
-                // Success: hide container, destroy temporary charts, notify user
-                printEl.style.display = 'none';
                 pc.forEach(c => c.destroy());
                 showToast('✓ PDF downloaded successfully!', 'success');
             })
             .catch(err => {
-                // Error: still clean up, but notify user of problem
                 console.error('PDF Export Error:', err);
-                printEl.style.display = 'none';
                 pc.forEach(c => c.destroy());
                 showToast('⚠ PDF export failed: ' + (err.message || 'Unknown error'), 'error');
             });
