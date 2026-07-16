@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sylver Post-Training Impact Assessment (SPTIA)</title>
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- External Libraries (CDN) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <div class="bg-glow"></div>
+
+    <div class="container">
+        <!-- Application Header -->
+        <header id="appHeader">
+            <div class="logo-container">
+                <div class="logo-badge">SYLVER</div>
+                <div class="logo-text">
+                    <h1>Impact Assessment Portal</h1>
+                    <span id="headerSubtitle">Sylver Consulting Analytics</span>
+                </div>
+            </div>
+            
+            <div class="header-actions">
+                <button id="themeToggle" class="btn-theme-toggle" title="Toggle Light/Dark Mode">
+                    <!-- Sun Icon (visible in dark theme) -->
+                    <svg id="sunIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path></svg>
+                    <!-- Moon Icon (visible in light theme) -->
+                    <svg id="moonIcon" style="display:none;" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>
+                </button>
+                
+                <!-- Login & Locking Actions -->
+                <button id="adminLoginBtn" class="btn btn-secondary btn-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+                    Staff Login
+                </button>
+                
+                <div id="adminHeaderActions" style="display: none; align-items: center; gap: 10px;">
+                    <button id="importDataBtn" class="btn btn-secondary btn-sm">Import</button>
+                    <input type="file" id="importFileInput" style="display: none;" accept=".json">
+                    <button id="exportAllBtn" class="btn btn-secondary btn-sm">Backup</button>
+                    <button id="adminLockBtn" class="btn btn-danger btn-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>
+                        Lock Portal
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- VIEW: ADMIN COMPLETED REPORTS — dad's primary landing page. -->
+        <!-- Deliberately isolated from the full dashboard so it can't be broken -->
+        <!-- by anything going on with pending items, metrics, or old test data. -->
+        <section id="adminReportsView" class="app-view">
+            <div class="card card-accent-indigo" style="max-width: 750px; margin: 40px auto;">
+                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
+                    <h3 class="card-title" style="margin-bottom:0;">Completed Reports</h3>
+                    <button id="adminAdvancedBtn" class="btn btn-secondary btn-sm">Advanced Dashboard →</button>
+                </div>
+                <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                    Every finished assessment from your managers. Click one to view the full report and export a PDF.
+                </p>
+                <div id="adminReportsList" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Populated dynamically -->
+                </div>
+                <div id="adminReportsEmptyState" style="display:none; text-align:center; padding: 30px 0; color: var(--text-secondary);">
+                    No completed reports yet. They'll appear here once a manager finishes a review.
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 1: DASHBOARD (ADMIN ONLY) -->
+        <section id="dashboardView" class="app-view">
+            <div style="margin-bottom: 15px;">
+                <button id="backToReportsBtn" class="btn btn-secondary btn-sm">← Completed Reports</button>
+            </div>
+            <!-- SaaS Stats Panel -->
+            <div class="metrics-panel">
+                <div class="metric-card">
+                    <div class="metric-icon">👥</div>
+                    <div class="metric-info">
+                        <span class="metric-label">Evaluated Clients</span>
+                        <h3 class="metric-value" id="statsTotal">0</h3>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">📈</div>
+                    <div class="metric-info">
+                        <span class="metric-label">Average Impact</span>
+                        <h3 class="metric-value" id="statsAvgScore">0%</h3>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">⚠️</div>
+                    <div class="metric-info">
+                        <span class="metric-label">Top Client Barrier</span>
+                        <h3 class="metric-value" id="statsTopBarrier" style="font-size: 1.15rem; font-weight: 600;">None</h3>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-icon">🎯</div>
+                    <div class="metric-info">
+                        <span class="metric-label">High-Growth Area</span>
+                        <h3 class="metric-value" id="statsTopComp" style="font-size: 1.15rem; font-weight: 600;">None</h3>
+                    </div>
+                </div>
+            </div>
+
+            <div class="assessment-list-header">
+                <h2>Impact Assessments</h2>
+                <button id="createNewBtn" class="btn btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg>
+                    New Assessment
+                </button>
+            </div>
+            
+            <div id="assessmentGrid" class="assessment-grid">
+                <!-- Items populated dynamically by JavaScript -->
+            </div>
+            
+            <div id="emptyState" class="empty-state" style="display: none;">
+                <div class="empty-state-icon">📋</div>
+                <h3>No Assessments Found</h3>
+                <p>Create a new assessment or import a JSON backup to get started.</p>
+            </div>
+        </section>
+
+        <!-- VIEW: MANAGER PORTAL — department picker, then per-department pending list -->
+        <section id="managerDeptView" class="app-view">
+            <div class="card card-accent-emerald" style="max-width: 700px; margin: 40px auto;">
+                <h3 class="card-title">Select Your Department</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                    Choose the department you manage. You'll only see pending assessments for that department.
+                </p>
+                <div id="managerDeptList" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Populated dynamically -->
+                </div>
+                <div id="managerDeptEmptyState" style="display:none; text-align:center; padding: 30px 0; color: var(--text-secondary);">
+                    No pending assessments right now. Check back after employees submit.
+                </div>
+            </div>
+        </section>
+
+        <section id="managerEmployeeListView" class="app-view">
+            <div class="card card-accent-emerald" style="max-width: 700px; margin: 40px auto;">
+                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
+                    <h3 class="card-title" id="managerDeptTitle" style="margin-bottom:0;">Department</h3>
+                    <button id="managerBackToDeptBtn" class="btn btn-secondary btn-sm">← Departments</button>
+                </div>
+                <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                    Pending assessments awaiting your review. Click one to complete Stages 4-5.
+                </p>
+                <div id="managerEmployeeList" style="display: flex; flex-direction: column; gap: 10px;">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 2: FORM ENTRY (MULTI-STAGE) -->
+        <section id="formView" class="app-view active">
+            <!-- Stage Navigation -->
+            <div class="tab-navigation" id="formTabNavigation">
+                <button class="tab-btn active" data-stage="1" id="tabStage1">1. Participant Info</button>
+                <button class="tab-btn" data-stage="2" id="tabStage2">2. Learning & Behaviour (A-D)</button>
+                <button class="tab-btn" data-stage="3" id="tabStage3">3. Barriers & Open Questions (E-F)</button>
+                <button class="tab-btn" data-stage="4" id="tabStage4" style="display: none;">4. Supervisor Validation</button>
+                <button class="tab-btn" data-stage="5" id="tabStage5" style="display: none;">5. Business KPIs</button>
+            </div>
+
+            <form id="assessmentForm" novalidate>
+                <!-- Hidden input for editing existing records -->
+                <input type="hidden" id="assessmentId" value="">
+
+                <!-- STAGE 1: Participant Info -->
+                <div class="form-stage active" id="stage1">
+                    <div class="card card-accent-indigo">
+                        <h3 class="card-title">Assessment Metadata</h3>
+                        <div class="form-group-row">
+                            <div class="form-group">
+                                <label for="trainingTitle">Training Title</label>
+                                <input type="text" id="trainingTitle" class="form-control" value="ADOPTING A SALES STRATEGIC THINKING" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="trainingDate">Training Date</label>
+                                <input type="date" id="trainingDate" class="form-control" value="2026-03-04" required>
+                            </div>
+                        </div>
+                        <div class="form-group-row">
+                            <div class="form-group">
+                                <label for="participantName">Participant Name</label>
+                                <input type="text" id="participantName" class="form-control" placeholder="e.g. John Doe" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="participantDept">Department</label>
+                                <input type="text" id="participantDept" class="form-control" placeholder="e.g. Corporate Sales" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="assessmentDate">Assessment Date</label>
+                                <input type="date" id="assessmentDate" class="form-control" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STAGE 2: Sections A-D Likert Scale Questions -->
+                <div class="form-stage" id="stage2" style="display: none;">
+                    <!-- Section A: Learning Transfer -->
+                    <div class="card card-accent-indigo">
+                        <h3 class="card-title">Section A: Learning Transfer</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                            Indicate level of agreement: 1 = Strongly Disagree, 2 = Disagree, 3 = Neutral, 4 = Agree, 5 = Strongly Agree.
+                        </p>
+                        <div class="questions-list" id="sectionAQuestions">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Section B: Behaviour Change -->
+                    <div class="card card-accent-indigo">
+                        <h3 class="card-title">Section B: Behaviour Change</h3>
+                        <div class="questions-list" id="sectionBQuestions">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Section C: Performance Improvement -->
+                    <div class="card card-accent-indigo">
+                        <h3 class="card-title">Section C: Performance Improvement</h3>
+                        <div class="questions-list" id="sectionCQuestions">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+
+                    <!-- Section D: Training Effectiveness -->
+                    <div class="card card-accent-indigo">
+                        <h3 class="card-title">Section D: Training Effectiveness</h3>
+                        <div class="questions-list" id="sectionDQuestions">
+                            <!-- Populated dynamically via JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STAGE 3: Barriers & Open Questions (Sections E & F) -->
+                <div class="form-stage" id="stage3" style="display: none;">
+                    <!-- Section E: Barriers to Application -->
+                    <div class="card card-accent-indigo">
+                        <h3 class="card-title">Section E: Barriers to Application</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                            What limits your ability to apply what you learned? (Select all that apply)
+                        </p>
+                        <div class="checkbox-grid">
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="barriers" value="No barriers"> No barriers
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="barriers" value="Lack of time"> Lack of time
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="barriers" value="Heavy workload"> Heavy workload
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="barriers" value="Lack of management support"> Lack of management support
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="barriers" value="Lack of opportunities"> Lack of opportunities
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="barriers" value="Limited resources"> Limited resources
+                            </label>
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="barriers" value="Other"> Other
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Section F: Open Questions -->
+                    <div class="card card-accent-indigo">
+                        <h3 class="card-title">Section F: Participant Feedback</h3>
+                        <div class="form-group">
+                            <label for="openQ1">1. What is the most valuable change you have made since attending this training?</label>
+                            <textarea id="openQ1" class="form-control" rows="4" placeholder="Describe the changes you implemented..."></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="openQ2">2. What additional support would help you improve your performance?</label>
+                            <textarea id="openQ2" class="form-control" rows="4" placeholder="Describe resources or management support needed..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STAGE 4: Supervisor Validation (ADMIN ONLY) -->
+                <!-- BUG FIX #3: Mark as admin-only so validation excludes these fields for clients -->
+                <div class="form-stage admin-only" id="stage4" style="display: none;">
+                    <div class="card card-accent-emerald">
+                        <h3 class="card-title" style="color: var(--color-success);">Supervisor Validation</h3>
+                        
+                        <div class="form-group-row">
+                            <div class="form-group">
+                                <label for="supervisorName">Supervisor Name</label>
+                                <input type="text" id="supervisorName" class="form-control" placeholder="Supervisor's Full Name">
+                            </div>
+                        </div>
+
+                        <h4 style="margin: 20px 0 10px; font-weight: 600;">Rate the Employee's Improvement:</h4>
+                        
+                        <div class="supervisor-table-container">
+                            <table class="supervisor-table">
+                               <thead>
+                                   <tr>
+                                       <th>Competency Domain</th>
+                                       <th class="center-align">1 (Poor)</th>
+                                       <th class="center-align">2</th>
+                                       <th class="center-align">3</th>
+                                       <th class="center-align">4</th>
+                                       <th class="center-align">5 (Excellent)</th>
+                                   </tr>
+                               </thead>
+                               <tbody id="supervisorCompetencyRows">
+                                   <!-- Populated dynamically via JS -->
+                               </tbody>
+                            </table>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Have you observed a positive behavioural change?</label>
+                            <div class="choice-row">
+                                <label class="choice-option">
+                                    <input type="radio" name="observedChange" value="Yes"> Yes
+                                </label>
+                                <label class="choice-option">
+                                    <input type="radio" name="observedChange" value="Partially"> Partially
+                                </label>
+                                <label class="choice-option">
+                                    <input type="radio" name="observedChange" value="No"> No
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Has the training contributed to improved performance?</label>
+                            <div class="choice-row">
+                                <label class="choice-option">
+                                    <input type="radio" name="improvedPerformance" value="Yes"> Yes
+                                </label>
+                                <label class="choice-option">
+                                    <input type="radio" name="improvedPerformance" value="Partially"> Partially
+                                </label>
+                                <label class="choice-option">
+                                    <input type="radio" name="improvedPerformance" value="No"> No
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="supervisorComments">Additional Comments / Observations</label>
+                            <textarea id="supervisorComments" class="form-control" rows="3" placeholder="Notes on behavioural adjustments..."></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- STAGE 5: Management KPIs (ADMIN ONLY) -->
+                <!-- BUG FIX #3: Mark as admin-only so validation excludes these fields for clients -->
+                <div class="form-stage admin-only" id="stage5" style="display: none;">
+                    <div class="card card-accent-emerald">
+                        <h3 class="card-title" style="color: var(--color-success);">Business KPI Section</h3>
+                        <p style="color: var(--text-secondary); margin-bottom: 25px; font-size: 0.9rem;">
+                            To be completed by Sales Manager or HR. These metrics will establish the Business Impact Score. Enter numerical values.
+                        </p>
+
+                        <div class="kpi-row">
+                            <div class="kpi-block">
+                                <h4>Sales Figure ($)</h4>
+                                <div class="kpi-inputs">
+                                    <input type="number" id="kpiSalesBefore" class="form-control" placeholder="Before" min="0">
+                                    <span class="kpi-separator">→</span>
+                                    <input type="number" id="kpiSalesAfter" class="form-control" placeholder="After" min="0">
+                                </div>
+                            </div>
+
+                            <div class="kpi-block">
+                                <h4>New Customers Count</h4>
+                                <div class="kpi-inputs">
+                                    <input type="number" id="kpiCustBefore" class="form-control" placeholder="Before" min="0">
+                                    <span class="kpi-separator">→</span>
+                                    <input type="number" id="kpiCustAfter" class="form-control" placeholder="After" min="0">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="kpi-row">
+                            <div class="kpi-block">
+                                <h4>Customer Retention (%)</h4>
+                                <div class="kpi-inputs">
+                                    <input type="number" id="kpiRetBefore" class="form-control" placeholder="Before" min="0" max="100">
+                                    <span class="kpi-separator">→</span>
+                                    <input type="number" id="kpiRetAfter" class="form-control" placeholder="After" min="0" max="100">
+                                </div>
+                            </div>
+
+                            <div class="kpi-block">
+                                <h4>Target Achievement (%)</h4>
+                                <div class="kpi-inputs">
+                                    <input type="number" id="kpiTargetBefore" class="form-control" placeholder="Before" min="0" max="200">
+                                    <span class="kpi-separator">→</span>
+                                    <input type="number" id="kpiTargetAfter" class="form-control" placeholder="After" min="0" max="200">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group-row" style="margin-top: 15px;">
+                            <div class="form-group">
+                                <label for="kpiCustomName">Custom KPI Label (Optional)</label>
+                                <input type="text" id="kpiCustomName" class="form-control" placeholder="e.g. Sales cycle length in days">
+                            </div>
+                            <div class="form-group">
+                                <label>Custom KPI Values</label>
+                                <div class="kpi-inputs">
+                                    <input type="number" id="kpiCustomBefore" class="form-control" placeholder="Before" min="0">
+                                    <span class="kpi-separator">→</span>
+                                    <input type="number" id="kpiCustomAfter" class="form-control" placeholder="After" min="0">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Controls Navigation -->
+                <div class="form-navigation">
+                    <button type="button" id="formBackBtn" class="btn btn-secondary" style="visibility: hidden;">Back</button>
+                    <div class="form-nav-right">
+                        <button type="button" id="cancelFormBtn" class="btn btn-secondary">Reset</button>
+                        <button type="button" id="formNextBtn" class="btn btn-primary">Next</button>
+                        <button type="submit" id="formSubmitBtn" class="btn btn-success" style="display: none;">Submit Assessment</button>
+                    </div>
+                </div>
+            </form>
+        </section>
+
+        <!-- VIEW 3: ANALYSIS REPORT DASHBOARD -->
+        <section id="analysisView" class="app-view">
+            <div class="assessment-list-header">
+                <h2>Sylver Consulting Impact Report</h2>
+                <div style="display:flex; gap:10px;">
+                    <button id="backToDashBtn" class="btn btn-secondary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" x2="5" y1="12" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                        Dashboard
+                    </button>
+                    <button id="editAssessmentBtn" class="btn btn-secondary">Edit</button>
+                    <button id="downloadPdfBtn" class="btn btn-primary">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+                        Download PDF
+                    </button>
+                </div>
+            </div>
+
+            <!-- Screen Dashboard Layout -->
+            <div class="dashboard-grid">
+                <!-- Sidebar: Balanced Scorecard & Index Details -->
+                <div class="sidebar-summary">
+                    <!-- Score Gauge -->
+                    <div class="overall-dial-card">
+                        <h3 style="font-size: 1.1rem; margin-bottom: 15px; text-transform:uppercase; letter-spacing:0.5px;">Overall Training Impact</h3>
+                        
+                        <div class="dial-circle-container">
+                            <svg class="dial-svg" width="160" height="160" viewBox="0 0 160 160">
+                                <circle class="dial-bg" cx="80" cy="80" r="70"></circle>
+                                <circle class="dial-fill" id="overallDialFill" cx="80" cy="80" r="70"></circle>
+                            </svg>
+                            <div class="dial-text">
+                                <div class="dial-percentage" id="overallScoreText">0%</div>
+                                <div class="dial-label">Impact Score</div>
+                            </div>
+                        </div>
+                        
+                        <div class="rating-badge" id="overallRatingBadge">Good Impact</div>
+                    </div>
+
+                    <!-- Indices Breakdown -->
+                    <div class="card card-accent-indigo">
+                        <h3 class="card-title" style="font-size:1.05rem; margin-bottom:15px;">Sylver Dimension Indices</h3>
+                        <div class="index-summary-list">
+                            <div class="index-row">
+                                <div class="index-info">
+                                    <h5>Learning Transfer (LTI)</h5>
+                                    <span>Avg Q1-Q8 (Weight 20%)</span>
+                                </div>
+                                <div class="index-score" id="ltiScore">0%</div>
+                            </div>
+                            <div class="index-row">
+                                <div class="index-info">
+                                    <h5>Behaviour Change (BCI)</h5>
+                                    <span>Avg Q9-Q16 (Weight 30%)</span>
+                                </div>
+                                <div class="index-score" id="bciScore">0%</div>
+                            </div>
+                            <div class="index-row">
+                                <div class="index-info">
+                                    <h5>Performance Improvement (PII)</h5>
+                                    <span>Avg Q17-Q22 (Weight 25%)</span>
+                                </div>
+                                <div class="index-score" id="piiScore">0%</div>
+                            </div>
+                            <div class="index-row">
+                                <div class="index-info">
+                                    <h5>Training Effectiveness (TEI)</h5>
+                                    <span>Avg Q23-Q25 (No weight)</span>
+                                </div>
+                                <div class="index-score" id="teiScore">0%</div>
+                            </div>
+                            <div class="index-row">
+                                <div class="index-info">
+                                    <h5>Supervisor Validation (SVI)</h5>
+                                    <span>Avg Ratings (Weight 15%)</span>
+                                </div>
+                                <div class="index-score" id="sviScore">0%</div>
+                            </div>
+                            <div class="index-row">
+                                <div class="index-info">
+                                    <h5>Business Impact (BII)</h5>
+                                    <span>Avg KPI change (Weight 10%)</span>
+                                </div>
+                                <div class="index-score" id="biiScore">0%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Main Dashboard: Info metadata, Charts, Qualitative summary -->
+                <div class="main-dashboard">
+                    <!-- Participant & Assessment Header Details -->
+                    <div class="card" style="padding: 20px;">
+                        <div class="form-group-row" style="margin-bottom: 0;">
+                            <div>
+                                <span style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">Participant</span>
+                                <h3 id="reportParticipant" style="font-size:1.2rem; font-weight:600; margin-top:2px;">—</h3>
+                            </div>
+                            <div>
+                                <span style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">Department</span>
+                                <p id="reportDept" style="font-size:1rem; font-weight:500; margin-top:2px;">—</p>
+                            </div>
+                            <div>
+                                <span style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">Training Date</span>
+                                <p id="reportTrainingDate" style="font-size:1rem; font-weight:500; margin-top:2px;">—</p>
+                            </div>
+                            <div>
+                                <span style="color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase;">Assessment Date</span>
+                                <p id="reportAssessmentDate" style="font-size:1rem; font-weight:500; margin-top:2px;">—</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Graphical Visualizations Grid -->
+                    <div class="charts-grid">
+                        <div class="card chart-card">
+                            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 10px;">Supervisor Competency Ratings</h4>
+                            <div class="chart-container">
+                                <canvas id="radarChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="card chart-card">
+                            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 10px;">Dimension Index Comparison</h4>
+                            <div class="chart-container">
+                                <canvas id="barChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="card chart-card">
+                            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 10px;">Business KPI Performance</h4>
+                            <div class="chart-container">
+                                <canvas id="kpiChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="card chart-card">
+                            <h4 style="font-size: 0.95rem; font-weight: 600; margin-bottom: 10px;">Barriers to Application</h4>
+                            <div class="chart-container">
+                                <canvas id="barriersChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Qualitative Feedback Summary -->
+                    <div class="summary-blocks-grid">
+                        <div class="summary-block-card">
+                            <h4>Participant Feedback Details</h4>
+                            <div class="summary-content-item">
+                                <span class="summary-label">Most Valuable Change:</span>
+                                <div class="summary-val" id="reportOpenQ1">—</div>
+                            </div>
+                            <div class="summary-content-item" style="margin-top: 15px;">
+                                <span class="summary-label">Additional Support Needed:</span>
+                                <div class="summary-val" id="reportOpenQ2">—</div>
+                            </div>
+                        </div>
+
+                        <div class="summary-block-card">
+                            <h4>Supervisor & Management Validation</h4>
+                            <div class="summary-content-item">
+                                <span class="summary-label">Supervisor Observed Positive Behaviour Change:</span>
+                                <div class="summary-val" id="reportObservedChange">—</div>
+                            </div>
+                            <div class="summary-content-item">
+                                <span class="summary-label">Training Contributed to Improved Performance:</span>
+                                <div class="summary-val" id="reportImprovedPerformance">—</div>
+                            </div>
+                            <div class="summary-content-item">
+                                <span class="summary-label">Supervisor Comments:</span>
+                                <div class="summary-val" id="reportSupervisorComments">—</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- VIEW 4: CLIENT / MANAGER CONFIRMATION VIEW -->
+        <!-- FIX: No visible link/code — assessment is emailed silently via EmailJS in the background -->
+        <section id="thankYouView" class="app-view">
+            <div class="thank-you-card card card-accent-emerald">
+                <div class="success-icon">✓</div>
+                <h2 id="thankYouTitle">Thank You!</h2>
+                <p id="thankYouMessage">Your responses have been successfully submitted.<br>Please hand the device back to your Sylver Consulting advisor.</p>
+
+                <div style="display: flex; flex-direction: column; gap: 15px; align-items: center; max-width: 400px; margin: 0 auto;">
+                    <button id="registerNewClientBtn" class="btn btn-success btn-lg" style="width: 100%;">
+                        Restart Form (Kiosk Mode)
+                    </button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- EmailJS SDK — used to silently send the completed assessment to the advisor's inbox -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
+    <!-- ADVISOR PASSCODE AUTH MODAL OVERLAY -->
+    <div id="passcodeModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content card card-accent-indigo">
+            <h3 class="card-title">Authentication</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
+                Enter your Manager or Admin passcode to continue.
+            </p>
+            <div class="form-group">
+                <label for="passcodeInput">Security Code</label>
+                <input type="password" id="passcodeInput" class="form-control" placeholder="••••••••" required>
+                <span id="passcodeError" style="color: var(--color-danger); font-size: 0.82rem; margin-top: 6px; display: none; font-weight: 600;">
+                    Invalid passcode. Access Denied.
+                </span>
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 25px;">
+                <button id="closePasscodeBtn" class="btn btn-secondary">Cancel</button>
+                <button id="submitPasscodeBtn" class="btn btn-primary">Unlock</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HIDDEN CONTAINER FOR PERFECT A4 PDF GENERATION -->
+    <div id="pdfPrintContainer">
+        <!-- PAGE 1 -->
+        <div class="pdf-page">
+            <div class="pdf-header">
+                <div class="pdf-logo">SYLVER CONSULTING</div>
+                <div class="pdf-subtitle">POST-TRAINING IMPACT REPORT</div>
+            </div>
+            
+            <div class="pdf-meta-box">
+                <div class="pdf-meta-row">
+                    <div><strong>Participant Name:</strong> <span id="pdfMetaParticipant">—</span></div>
+                    <div><strong>Department:</strong> <span id="pdfMetaDept">—</span></div>
+                </div>
+                <div class="pdf-meta-row">
+                    <div><strong>Training Title:</strong> ADOPTING A SALES STRATEGIC THINKING</div>
+                    <div><strong>Training Date:</strong> 2026-03-04</div>
+                </div>
+                <div class="pdf-meta-row">
+                    <div><strong>Evaluation Date:</strong> <span id="pdfMetaDate">—</span></div>
+                    <div><strong>Supervisor Name:</strong> <span id="pdfMetaSupervisor">—</span></div>
+                </div>
+            </div>
+
+            <!-- Dial and Table indices side-by-side -->
+            <div class="pdf-layout-split" style="margin-top: 30px;">
+                <div class="pdf-col-left-small">
+                    <div class="pdf-card" style="text-align: center; padding: 25px 15px;">
+                        <h4 style="margin-bottom: 15px; font-size: 0.9rem; letter-spacing: 0.5px; text-transform: uppercase;">Overall Impact</h4>
+                        <div style="font-size: 3.2rem; font-weight: 700; color: #4f46e5; line-height: 1;" id="pdfOverallScore">0%</div>
+                        <div id="pdfOverallRating" class="pdf-rating-indicator" style="margin-top: 15px; display: inline-block; font-weight: 600; font-size: 0.85rem; padding: 4px 12px; border-radius: 20px; text-transform: uppercase;">Good Impact</div>
+                    </div>
+                </div>
+                <div class="pdf-col-right-large">
+                    <div class="pdf-card" style="padding: 15px 20px;">
+                        <h4 style="margin-bottom: 15px; font-size: 0.9rem; letter-spacing: 0.5px; text-transform: uppercase;">Sylver Dimension Indices</h4>
+                        <table class="pdf-index-table">
+                            <tbody>
+                                <tr>
+                                    <td><strong>Learning Transfer Index (LTI)</strong> <span style="font-size:0.75rem; color:#6b7280; display:block;">Avg Questions 1-8 (Weight 20%)</span></td>
+                                    <td class="pdf-score-val" id="pdfLti">0%</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Behaviour Change Index (BCI)</strong> <span style="font-size:0.75rem; color:#6b7280; display:block;">Avg Questions 9-16 (Weight 30%)</span></td>
+                                    <td class="pdf-score-val" id="pdfBci">0%</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Performance Improvement Index (PII)</strong> <span style="font-size:0.75rem; color:#6b7280; display:block;">Avg Questions 17-22 (Weight 25%)</span></td>
+                                    <td class="pdf-score-val" id="pdfPii">0%</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Training Effectiveness Index (TEI)</strong> <span style="font-size:0.75rem; color:#6b7280; display:block;">Avg Questions 23-25 (No weight)</span></td>
+                                    <td class="pdf-score-val" id="pdfTei">0%</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Supervisor Validation Index (SVI)</strong> <span style="font-size:0.75rem; color:#6b7280; display:block;">Avg Supervisor Rating (Weight 15%)</span></td>
+                                    <td class="pdf-score-val" id="pdfSvi">0%</td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Business Impact Index (BII)</strong> <span style="font-size:0.75rem; color:#6b7280; display:block;">Avg KPI metrics changes (Weight 10%)</span></td>
+                                    <td class="pdf-score-val" id="pdfBii">0%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="pdf-footer">Page 1 of 3</div>
+        </div>
+
+        <div class="pdf-page-break"></div>
+
+        <!-- PAGE 2 -->
+        <div class="pdf-page">
+            <div class="pdf-header">
+                <div class="pdf-logo">SYLVER CONSULTING</div>
+                <div class="pdf-subtitle">DETAILED COMPETENCY ANALYSIS</div>
+            </div>
+
+            <!-- Charts side by side -->
+            <div class="pdf-layout-split" style="margin-top: 15px;">
+                <div class="pdf-col-half">
+                    <div class="pdf-card" style="height: 290px;">
+                        <h4 style="margin-bottom: 10px; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Supervisor Competency Ratings</h4>
+                        <div style="position: relative; height: 230px; width: 100%;">
+                            <canvas id="radarChartPrint"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="pdf-col-half">
+                    <div class="pdf-card" style="height: 290px;">
+                        <h4 style="margin-bottom: 10px; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Dimension Index Comparison</h4>
+                        <div style="position: relative; height: 230px; width: 100%;">
+                            <canvas id="barChartPrint"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Qualitative responses -->
+            <div class="pdf-card" style="margin-top: 25px; padding: 20px;">
+                <h4 style="border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; margin-bottom: 15px; font-size: 0.9rem; text-transform: uppercase;">Participant Qualitative Feedback</h4>
+                
+                <div style="margin-bottom: 15px;">
+                    <span style="font-size: 0.8rem; font-weight: 600; color: #4b5563; display: block; margin-bottom: 4px;">1. Most valuable change made since attending training:</span>
+                    <div style="font-size: 0.9rem; line-height: 1.4; color: #111827; background: #f9fafb; padding: 10px 15px; border-radius: 6px;" id="pdfOpenQ1">—</div>
+                </div>
+                
+                <div>
+                    <span style="font-size: 0.8rem; font-weight: 600; color: #4b5563; display: block; margin-bottom: 4px;">2. Additional support that would help improve performance:</span>
+                    <div style="font-size: 0.9rem; line-height: 1.4; color: #111827; background: #f9fafb; padding: 10px 15px; border-radius: 6px;" id="pdfOpenQ2">—</div>
+                </div>
+            </div>
+
+            <div class="pdf-footer">Page 2 of 3</div>
+        </div>
+
+        <div class="pdf-page-break"></div>
+
+        <!-- PAGE 3 -->
+        <div class="pdf-page">
+            <div class="pdf-header">
+                <div class="pdf-logo">SYLVER CONSULTING</div>
+                <div class="pdf-subtitle">BUSINESS IMPACT & BARRIERS</div>
+            </div>
+
+            <!-- Charts side by side -->
+            <div class="pdf-layout-split" style="margin-top: 15px;">
+                <div class="pdf-col-half">
+                    <div class="pdf-card" style="height: 290px;">
+                        <h4 style="margin-bottom: 10px; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Business KPI Performance</h4>
+                        <div style="position: relative; height: 230px; width: 100%;">
+                            <canvas id="kpiChartPrint"></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="pdf-col-half">
+                    <div class="pdf-card" style="height: 290px;">
+                        <h4 style="margin-bottom: 10px; font-size: 0.85rem; letter-spacing: 0.5px; text-transform: uppercase;">Barriers to Application</h4>
+                        <div style="position: relative; height: 230px; width: 100%;">
+                            <canvas id="barriersChartPrint"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Validation Details -->
+            <div class="pdf-layout-split" style="margin-top: 25px;">
+                <div class="pdf-col-half">
+                    <div class="pdf-card" style="padding: 15px 20px; min-height: 220px;">
+                        <h4 style="border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 10px; font-size: 0.85rem; text-transform: uppercase;">Supervisor Validation Details</h4>
+                        
+                        <div style="margin-bottom: 8px; font-size: 0.85rem;">
+                            <strong>Observed positive behavioural change:</strong>
+                            <span style="float: right;" id="pdfObservedChange">—</span>
+                        </div>
+                        <div style="margin-bottom: 8px; font-size: 0.85rem;">
+                            <strong>Training contributed to improved performance:</strong>
+                            <span style="float: right;" id="pdfImprovedPerformance">—</span>
+                        </div>
+                        <div style="font-size: 0.85rem;">
+                            <strong>Supervisor Comments:</strong>
+                            <div style="margin-top: 5px; font-style: italic; color: #4b5563; line-height: 1.4; background:#f9fafb; padding:8px; border-radius:4px;" id="pdfSupervisorComments">—</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="pdf-col-half">
+                    <div class="pdf-card" style="padding: 15px 20px; min-height: 220px;">
+                        <h4 style="border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; margin-bottom: 10px; font-size: 0.85rem; text-transform: uppercase;">KPI Values Breakdown</h4>
+                        <table class="pdf-kpi-table">
+                            <thead>
+                                <tr>
+                                    <th>KPI Metric</th>
+                                    <th>Before</th>
+                                    <th>After</th>
+                                    <th>Change</th>
+                                </tr>
+                            </thead>
+                            <tbody id="pdfKpiTableRows">
+                                <!-- Populated dynamically by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="pdf-footer">Page 3 of 3</div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
