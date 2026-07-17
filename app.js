@@ -290,16 +290,23 @@ function renderAdminReports() {
     const empty = document.getElementById('adminReportsEmptyState');
     list.innerHTML = '';
 
-    const completed = assessments.filter(a => a && a.metadata && a.id && a.status === 'completed');
-    empty.style.display = completed.length ? 'none' : 'block';
+    const records = assessments.filter(a => a && a.metadata && a.id &&
+        (a.status === 'completed' || a.status === 'pending'));
+    empty.style.display = records.length ? 'none' : 'block';
 
-    completed.forEach(r => {
-        let scoreLabel = '—';
-        try {
-            const s = calculateAssessmentScores(r);
-            scoreLabel = `${s.overallScore.toFixed(0)}%`;
-        } catch (err) {
-            console.warn('Could not score record', r.id, err);
+    records.forEach(r => {
+        let badge;
+        if (r.status === 'completed') {
+            let scoreLabel = '—';
+            try {
+                const s = calculateAssessmentScores(r);
+                scoreLabel = `${s.overallScore.toFixed(0)}%`;
+            } catch (err) {
+                console.warn('Could not score record', r.id, err);
+            }
+            badge = `<span class="status-badge completed">${scoreLabel}</span>`;
+        } else {
+            badge = `<span class="status-badge pending">Awaiting Supervisor</span>`;
         }
 
         const row = document.createElement('div');
@@ -309,7 +316,7 @@ function renderAdminReports() {
                 <div class="manager-row-title">${escapeHtml(r.metadata.participantName || 'Unknown')}</div>
                 <div class="manager-row-sub">${escapeHtml(r.metadata.participantDept || '—')} — ${r.metadata.assessmentDate || ''}</div>
             </div>
-            <span class="status-badge completed">${scoreLabel}</span>
+            ${badge}
         `;
         row.addEventListener('click', () => {
             try {
@@ -583,11 +590,7 @@ function validatePasscode() {
             // Try to open it directly for convenience; if anything about this specific
             // record is malformed, the list itself is unaffected — just fall back to it.
             try {
-                if (rec.status === 'completed') {
-                    showReport(rec);
-                } else {
-                    openAssessmentForm(rec);
-                }
+                showReport(rec);
                 showToast(`Report for "${rec.metadata.participantName}" loaded.`, 'success');
             } catch (err) {
                 console.error('Failed to auto-open imported record:', err);
@@ -912,13 +915,13 @@ function handleFormSubmit(e) {
             kpis:       null
         };
 
-        // Save locally — this is all that's needed. It sits in the department
-        // queue until a manager logs in on this same device to review it.
         const idx = assessments.findIndex(a => a.id === id);
         if (idx > -1) assessments[idx] = record; else assessments.push(record);
         saveAssessments();
 
-        // BUG FIX #4: Add user feedback
+        // Email employee responses directly to Admin for immediate visibility
+        sendAssessmentEmail(record, ADMIN_EMAIL);
+
         showToast('✓ Assessment submitted successfully!', 'success');
         switchView(thankYouView);
         return;
@@ -1237,9 +1240,10 @@ function showReport(record) {
         document.getElementById('reportImprovedPerformance').innerText = record.supervisor.improvedPerformance;
         document.getElementById('reportSupervisorComments').innerText  = record.supervisor.comments || 'No comments.';
     } else {
-        document.getElementById('reportObservedChange').innerText      = 'No supervisor rating completed.';
-        document.getElementById('reportImprovedPerformance').innerText = 'N/A';
-        document.getElementById('reportSupervisorComments').innerText  = 'N/A';
+        const notYet = 'Not yet completed — awaiting supervisor review.';
+        document.getElementById('reportObservedChange').innerText      = notYet;
+        document.getElementById('reportImprovedPerformance').innerText = notYet;
+        document.getElementById('reportSupervisorComments').innerText  = notYet;
     }
 
     // FIX: switch to the visible view BEFORE building charts — Chart.js needs
