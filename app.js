@@ -1,12 +1,12 @@
-// ============================================================
-// Sylver Post-Training Impact Assessment (SPTIA) — Core JS
-// Admin Passcode: Jesus1234
-// ============================================================
 
 // --- Data Structures ---
 const ADMIN_PASSCODE   = 'Jesus1234';
 const MANAGER_PASSCODE = '12345';         // shared by all managers — change this to whatever you want
 const ADMIN_EMAIL      = 'brunonkengp@gmail.com';
+
+// Employees can no longer submit new assessments after this date/time.
+// Manager and Admin access are NOT affected by this — only the employee submission form.
+const SUBMISSION_DEADLINE = new Date('2026-07-23T23:59:59');
 
 // --- EmailJS Config (silent background delivery to advisor) ---
 const EMAILJS_PUBLIC_KEY  = '4mLZceB-FggPGIMpw';
@@ -195,6 +195,14 @@ function enterClientMode() {
     adminHeaderActions.style.display  = 'none';
     adminLoginBtn.style.display       = 'inline-flex';
     document.getElementById('headerSubtitle').innerText = 'Client Assessment Form';
+    document.getElementById('deadlineBanner').style.display = 'block';
+
+    // Submission deadline check — employees only. Manager/Admin login (header button)
+    // remains available regardless, since it's outside this view entirely.
+    if (new Date() > SUBMISSION_DEADLINE) {
+        switchView(document.getElementById('submissionClosedView'));
+        return;
+    }
 
     // Clear any previous form data and go to form
     resetClientForm();
@@ -446,6 +454,7 @@ function showManagerThankYou(record) {
     document.getElementById('thankYouMessage').innerHTML =
         `The completed report for <strong>${record.metadata.participantName}</strong> has been emailed to the Admin and removed from your queue.`;
     document.getElementById('registerNewClientBtn').innerText = 'Back to My Department Queue';
+    document.getElementById('thankYouBranding').style.display = 'none';   // Manager screen: no client-facing branding
     switchView(thankYouView);
 }
 
@@ -555,6 +564,7 @@ function setupEventListeners() {
             document.getElementById('thankYouMessage').innerHTML =
                 'Your responses have been successfully submitted.<br>Please hand the device back to your Sylver Consulting advisor.';
             document.getElementById('registerNewClientBtn').innerText = 'Restart Form (Kiosk Mode)';
+            document.getElementById('thankYouBranding').style.display = '';   // restore for next client use
             if (managerSelectedDept) {
                 openManagerDeptQueue(managerSelectedDept);
             } else {
@@ -566,6 +576,7 @@ function setupEventListeners() {
             document.getElementById('thankYouMessage').innerHTML =
                 'Your responses have been successfully submitted.<br>Please hand the device back to your Sylver Consulting advisor.';
             document.getElementById('registerNewClientBtn').innerText = 'Restart Form (Kiosk Mode)';
+            document.getElementById('thankYouBranding').style.display = '';   // ensure visible for client mode
             resetClientForm();
             switchView(formView);
         }
@@ -714,6 +725,7 @@ function openAssessmentForm(record = null, adminCreatedNew = false) {
     const showStages45 = isAdminMode || isManagerMode;
     document.getElementById('tabStage4').style.display = showStages45 ? 'inline-block' : 'none';
     document.getElementById('tabStage5').style.display = showStages45 ? 'inline-block' : 'none';
+    document.getElementById('deadlineBanner').style.display = showStages45 ? 'none' : 'block';
 
     let startStage = 1;
 
@@ -895,6 +907,13 @@ function handleFormSubmit(e) {
 
     // ---- CLIENT SUBMISSION ----
     if (!isAdminMode && !isManagerMode) {
+        // Safety check: form may have been left open across the deadline boundary
+        if (new Date() > SUBMISSION_DEADLINE) {
+            switchView(document.getElementById('submissionClosedView'));
+            showToast('The submission window has closed.', 'warning');
+            return;
+        }
+
         const record = {
             id,
             status: 'pending',
@@ -1376,6 +1395,13 @@ function exportToPDF() {
 
     const s = calculateAssessmentScores(rec);
     const printEl = document.getElementById('pdfPrintContainer');
+    const overlay = document.getElementById('pdfGeneratingOverlay');
+
+    // FIX: make the container genuinely visible on-screen BEFORE anything else —
+    // charts must be created while it has real, non-zero dimensions, not after.
+    // The opaque overlay covers it the whole time so the user only sees a spinner.
+    printEl.classList.add('pdf-exporting');
+    overlay.classList.add('active');
 
     // --- Populate text fields ---
     document.getElementById('pdfMetaParticipant').innerText = rec.metadata.participantName;
@@ -1514,6 +1540,19 @@ function exportToPDF() {
     
     showToast('Generating PDF... This may take 10-15 seconds', 'info');
     
+    // --- BUG FIX (final): render on-screen for capture, covered by opaque overlay ---
+    // Off-screen positioning (top:-9999px) was confirmed unreliable — html2canvas
+    // kept producing blank/incomplete output regardless of capture option overrides.
+    // Rendering the container genuinely on-screen (behind a solid loading cover)
+    // removes all ambiguity: html2canvas is capturing exactly what a normal,
+    // visible, fully-laid-out element looks like. (Container was already made
+    // visible at the top of this function, before charts were created.)
+    function cleanupPdfUI() {
+        printEl.classList.remove('pdf-exporting');
+        overlay.classList.remove('active');
+        pc.forEach(c => c.destroy());
+    }
+
     setTimeout(() => {
         html2pdf()
             .set({
@@ -1526,12 +1565,12 @@ function exportToPDF() {
             .from(printEl)
             .save()
             .then(() => {
-                pc.forEach(c => c.destroy());
+                cleanupPdfUI();
                 showToast('✓ PDF downloaded successfully!', 'success');
             })
             .catch(err => {
                 console.error('PDF Export Error:', err);
-                pc.forEach(c => c.destroy());
+                cleanupPdfUI();
                 showToast('⚠ PDF export failed: ' + (err.message || 'Unknown error'), 'error');
             });
     }, 800);  // Increased from 500ms to 800ms to allow full chart rendering
