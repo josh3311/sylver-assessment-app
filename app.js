@@ -1,3 +1,7 @@
+// ============================================================
+// Sylver Post-Training Impact Assessment (SPTIA) — Core JS
+// Admin Passcode: Jesus1234
+// ============================================================
 
 // --- Data Structures ---
 const ADMIN_PASSCODE   = 'Jesus1234';
@@ -91,7 +95,7 @@ let activeStage  = 1;
 let isAdminMode  = false;
 let isManagerMode = false;
 let pendingImportRecord = null;   // holds a record just pulled in via ?import= (dad's remote email link) until passcode is entered
-let managerSelectedDept = null;   // department the manager picked, for filtering their queue
+// (no longer used — Supervisor Portal is now a standalone form, not a department queue)
 let chartInstances = {};
 
 // --- DOM Refs ---
@@ -134,7 +138,9 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const bytes = Uint8Array.from(atob(importPayload), c => c.charCodeAt(0));
             const record = JSON.parse(new TextDecoder().decode(bytes));
-            if (record && record.id && record.metadata) {
+            const isValidRecord = record && record.id &&
+                (record.metadata || (record.type === 'supervisor_only' && record.employeeName));
+            if (isValidRecord) {
                 const idx = assessments.findIndex(a => a.id === record.id);
                 if (idx > -1) assessments[idx] = record; else assessments.push(record);
                 saveAssessments();
@@ -298,11 +304,36 @@ function renderAdminReports() {
     const empty = document.getElementById('adminReportsEmptyState');
     list.innerHTML = '';
 
-    const records = assessments.filter(a => a && a.metadata && a.id &&
-        (a.status === 'completed' || a.status === 'pending'));
+    const records = assessments.filter(a => a && a.id &&
+        ((a.metadata && (a.status === 'completed' || a.status === 'pending')) ||
+         (a.type === 'supervisor_only' && a.status === 'completed')));
+    // Newest first
+    records.sort((a, b) => new Date(b.submittedAt || b.metadata?.assessmentDate || 0) - new Date(a.submittedAt || a.metadata?.assessmentDate || 0));
     empty.style.display = records.length ? 'none' : 'block';
 
     records.forEach(r => {
+        if (r.type === 'supervisor_only') {
+            const row = document.createElement('div');
+            row.className = 'manager-row';
+            row.innerHTML = `
+                <div>
+                    <div class="manager-row-title">${escapeHtml(r.employeeName || 'Unknown')}</div>
+                    <div class="manager-row-sub">Supervisor: ${escapeHtml(r.supervisor?.name || '—')} — ${(r.submittedAt || '').slice(0,10)}</div>
+                </div>
+                <span class="status-badge completed" style="background: rgba(99,102,241,0.15); color:#818cf8;">Supervisor Assessment</span>
+            `;
+            row.addEventListener('click', () => {
+                try {
+                    showSupervisorReport(r);
+                } catch (err) {
+                    console.error('Failed to open supervisor report', r.id, err);
+                    showToast('⚠ Could not open this report — the record may be corrupted.', 'error');
+                }
+            });
+            list.appendChild(row);
+            return;
+        }
+
         let badge;
         if (r.status === 'completed') {
             let scoreLabel = '—';
@@ -339,6 +370,50 @@ function renderAdminReports() {
 }
 
 // ============================================================
+// SUPERVISOR-ONLY REPORT VIEW
+// ============================================================
+// Simple, table-based (no charts) — this is a standalone supervisor
+// submission, not merged with the employee's own self-assessment.
+// Combining the two into one full analysis is Phase 3 (deferred).
+function showSupervisorReport(record) {
+    document.getElementById('svEmployeeName').innerText    = record.employeeName || '—';
+    document.getElementById('svSupervisorName').innerText  = record.supervisor?.name || '—';
+    document.getElementById('svSubmittedDate').innerText   = (record.submittedAt || '').slice(0, 10) || '—';
+
+    // Competency ratings table
+    const ratingsBody = document.getElementById('svRatingsTableRows');
+    ratingsBody.innerHTML = '';
+    supervisorCompetencies.forEach(comp => {
+        const val = record.supervisor?.ratings?.[comp.key];
+        ratingsBody.innerHTML += `<tr><td>${escapeHtml(comp.label)}</td><td>${val ?? '—'}</td></tr>`;
+    });
+
+    document.getElementById('svObservedChange').innerText      = record.supervisor?.observedChange      || '—';
+    document.getElementById('svImprovedPerformance').innerText = record.supervisor?.improvedPerformance || '—';
+    document.getElementById('svComments').innerText            = record.supervisor?.comments || 'No comments provided.';
+
+    // KPI table
+    const kpiBody = document.getElementById('svKpiTableRows');
+    kpiBody.innerHTML = '';
+    const k = record.kpis || {};
+    const addRow = (label, b, a) => {
+        if (b === null || b === undefined || a === null || a === undefined) return;
+        const pct = b > 0 ? ((a - b) / b * 100) : 0;
+        const color = pct > 0 ? '#34d399' : (pct < 0 ? '#ef4444' : 'var(--text-secondary)');
+        kpiBody.innerHTML += `<tr><td>${label}</td><td>${b}</td><td>${a}</td>
+            <td style="color:${color};font-weight:700;">${pct > 0 ? '+' : ''}${pct.toFixed(0)}%</td></tr>`;
+    };
+    addRow('Sales ($)', k.salesBefore, k.salesAfter);
+    addRow('New Customers', k.custBefore, k.custAfter);
+    addRow('Retention (%)', k.retBefore, k.retAfter);
+    addRow('Target Achieved (%)', k.targetBefore, k.targetAfter);
+    if (k.customBefore != null) addRow(k.customName || 'Custom KPI', k.customBefore, k.customAfter);
+    if (!kpiBody.innerHTML) kpiBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);">No KPI metrics recorded</td></tr>';
+
+    switchView(document.getElementById('supervisorReportView'));
+}
+
+// ============================================================
 // MANAGER PORTAL — department picker + filtered pending queue
 // ============================================================
 // Fully local: no email/import needed. Department is taken straight from
@@ -346,7 +421,6 @@ function renderAdminReports() {
 function enterManagerPortal() {
     isAdminMode   = false;
     isManagerMode = true;
-    managerSelectedDept = null;
 
     document.getElementById('tabStage4').style.display = 'inline-block';
     document.getElementById('tabStage5').style.display = 'inline-block';
@@ -354,107 +428,50 @@ function enterManagerPortal() {
     adminLoginBtn.style.display      = 'none';
     document.getElementById('importDataBtn').style.display = 'none';
     document.getElementById('exportAllBtn').style.display  = 'none';
-    document.getElementById('headerSubtitle').innerText = 'Manager Review Portal';
+    document.getElementById('headerSubtitle').innerText = 'Supervisor Portal';
 
     const existingChip = adminHeaderActions.querySelector('.role-chip');
     if (existingChip) existingChip.remove();
     const chip = document.createElement('span');
     chip.className = 'role-chip';
-    chip.innerText = 'Manager Mode';
+    chip.innerText = 'Supervisor Mode';
     chip.style.marginRight = '10px';
     adminHeaderActions.prepend(chip);
 
-    renderManagerDepartments();
+    // Reset the entry field each time the portal is entered
+    const nameField = document.getElementById('supervisorPortalEmployeeName');
+    if (nameField) nameField.value = '';
+
     switchView(document.getElementById('managerDeptView'));
 }
 
-function getPendingDepartments() {
-    loadAssessments();
-    const pending = assessments.filter(a => a && a.metadata && a.status === 'pending');
-    const counts = {};
-    pending.forEach(a => {
-        const dept = (a.metadata.participantDept || 'Unspecified').trim();
-        const key  = dept.toLowerCase();
-        if (!counts[key]) counts[key] = { label: dept, count: 0 };
-        counts[key].count++;
-    });
-    return Object.values(counts).sort((a, b) => a.label.localeCompare(b.label));
-}
-
-function renderManagerDepartments() {
-    const list  = document.getElementById('managerDeptList');
-    const empty = document.getElementById('managerDeptEmptyState');
-    const depts = getPendingDepartments();
-
-    list.innerHTML = '';
-    empty.style.display = depts.length ? 'none' : 'block';
-
-    depts.forEach(d => {
-        const row = document.createElement('div');
-        row.className = 'manager-row';
-        row.innerHTML = `
-            <div>
-                <div class="manager-row-title">${d.label}</div>
-                <div class="manager-row-sub">${d.count} pending assessment${d.count === 1 ? '' : 's'}</div>
-            </div>
-            <span class="manager-row-count">${d.count}</span>
-        `;
-        row.addEventListener('click', () => openManagerDeptQueue(d.label));
-        list.appendChild(row);
-    });
-}
-
-function openManagerDeptQueue(deptLabel) {
-    managerSelectedDept = deptLabel;
-    document.getElementById('managerDeptTitle').innerText = deptLabel;
-    renderManagerEmployeeList();
-    switchView(document.getElementById('managerEmployeeListView'));
-}
-
-function renderManagerEmployeeList() {
-    loadAssessments();
-    const list = document.getElementById('managerEmployeeList');
-    list.innerHTML = '';
-
-    const rows = assessments.filter(a =>
-        a && a.metadata &&
-        a.status === 'pending' &&
-        (a.metadata.participantDept || 'Unspecified').trim().toLowerCase() === managerSelectedDept.toLowerCase()
-    );
-
-    if (!rows.length) {
-        list.innerHTML = `<p style="color: var(--text-secondary); text-align:center; padding: 20px 0;">No pending assessments left in this department.</p>`;
+// Supervisor typed a name and clicked "Begin Assessment" — jump straight to
+// Stage 4, skipping Stages 1-3 entirely. No existing employee record involved:
+// this is always a fresh, standalone supervisor submission.
+function beginSupervisorAssessment() {
+    const nameField = document.getElementById('supervisorPortalEmployeeName');
+    const name = nameField.value.trim();
+    if (!name) {
+        showToast('Please enter the employee\'s name first.', 'warning');
+        nameField.focus();
         return;
     }
 
-    rows.forEach(r => {
-        const row = document.createElement('div');
-        row.className = 'manager-row';
-        row.innerHTML = `
-            <div>
-                <div class="manager-row-title">${r.metadata.participantName}</div>
-                <div class="manager-row-sub">${r.metadata.trainingTitle} — ${r.metadata.assessmentDate}</div>
-            </div>
-            <span class="status-badge pending">Pending</span>
-        `;
-        row.addEventListener('click', () => openManagerReview(r));
-        list.appendChild(row);
-    });
-}
+    assessmentForm.reset();
+    document.getElementById('assessmentId').value = '';
+    document.getElementById('supervisorAssessEmployeeName').value = name;
 
-function openManagerReview(record) {
-    openAssessmentForm(record);
     goToStage(4);
     switchView(formView);
-    showToast(`Reviewing "${record.metadata.participantName}" — complete Stages 4 & 5.`, 'info');
+    showToast(`Assessing ${name} — complete the questions below.`, 'info');
 }
 
-function showManagerThankYou(record) {
+function showManagerThankYou(employeeName) {
     document.getElementById('thankYouTitle').innerText = 'Sent to Admin!';
     document.getElementById('thankYouMessage').innerHTML =
-        `The completed report for <strong>${record.metadata.participantName}</strong> has been emailed to the Admin and removed from your queue.`;
-    document.getElementById('registerNewClientBtn').innerText = 'Back to My Department Queue';
-    document.getElementById('thankYouBranding').style.display = 'none';   // Manager screen: no client-facing branding
+        `The completed supervisor assessment for <strong>${employeeName}</strong> has been emailed to the Admin.`;
+    document.getElementById('registerNewClientBtn').innerText = 'Assess Another Employee';
+    document.getElementById('thankYouBranding').style.display = 'none';   // Supervisor screen: no client-facing branding
     switchView(thankYouView);
 }
 
@@ -489,11 +506,8 @@ function setupEventListeners() {
         if (confirm('Lock the portal back to Client Mode?')) enterClientMode();
     });
 
-    // Manager: back to department list
-    document.getElementById('managerBackToDeptBtn').addEventListener('click', () => {
-        renderManagerDepartments();
-        switchView(document.getElementById('managerDeptView'));
-    });
+    // Supervisor: "Begin Assessment" button on the entry screen
+    document.getElementById('supervisorPortalBeginBtn').addEventListener('click', beginSupervisorAssessment);
 
     // Dashboard new assessment
     document.getElementById('createNewBtn').addEventListener('click', () => {
@@ -518,10 +532,7 @@ function setupEventListeners() {
     // Reset / cancel button
     cancelFormBtn.addEventListener('click', () => {
         if (isManagerMode) {
-            if (confirm('Discard this review and return to your queue?')) {
-                if (managerSelectedDept) openManagerDeptQueue(managerSelectedDept);
-                else enterManagerPortal();
-            }
+            if (confirm('Discard this assessment and return to the Supervisor Portal?')) enterManagerPortal();
         } else if (!isAdminMode) {
             if (confirm('Reset form and start over?')) resetClientForm();
         } else {
@@ -546,6 +557,7 @@ function setupEventListeners() {
         showDashboard();
     });
     document.getElementById('backToReportsBtn').addEventListener('click', () => enterAdminPortal(false));
+    document.getElementById('backToReportsFromSupervisorBtn').addEventListener('click', () => enterAdminPortal(false));
     document.getElementById('editAssessmentBtn').addEventListener('click', handleEditAssessment);
     document.getElementById('downloadPdfBtn').addEventListener('click', exportToPDF);
 
@@ -559,17 +571,13 @@ function setupEventListeners() {
     // Thank-You view buttons
     document.getElementById('registerNewClientBtn').addEventListener('click', () => {
         if (isManagerMode) {
-            // Manager: go back to their department queue (record they just finished is now gone from it)
+            // Supervisor: back to the entry screen, ready for the next employee
             document.getElementById('thankYouTitle').innerText = 'Thank You!';
             document.getElementById('thankYouMessage').innerHTML =
                 'Your responses have been successfully submitted.<br>Please hand the device back to your Sylver Consulting advisor.';
             document.getElementById('registerNewClientBtn').innerText = 'Restart Form (Kiosk Mode)';
             document.getElementById('thankYouBranding').style.display = '';   // restore for next client use
-            if (managerSelectedDept) {
-                openManagerDeptQueue(managerSelectedDept);
-            } else {
-                enterManagerPortal();
-            }
+            enterManagerPortal();
         } else {
             // Reset the Thank You copy back to the default client wording
             document.getElementById('thankYouTitle').innerText = 'Thank You!';
@@ -581,7 +589,7 @@ function setupEventListeners() {
             switchView(formView);
         }
     });
-    // Note: manager's "Back to Departments" and "Send to Admin" handled inline via renderManagerDepartments()
+    // Note: Supervisor's "Assess Another Employee" flow is handled by showManagerThankYou() + enterManagerPortal()
 }
 
 // ============================================================
@@ -601,8 +609,13 @@ function validatePasscode() {
             // Try to open it directly for convenience; if anything about this specific
             // record is malformed, the list itself is unaffected — just fall back to it.
             try {
-                showReport(rec);
-                showToast(`Report for "${rec.metadata.participantName}" loaded.`, 'success');
+                if (rec.type === 'supervisor_only') {
+                    showSupervisorReport(rec);
+                    showToast(`Supervisor assessment for "${rec.employeeName}" loaded.`, 'success');
+                } else {
+                    showReport(rec);
+                    showToast(`Report for "${rec.metadata.participantName}" loaded.`, 'success');
+                }
             } catch (err) {
                 console.error('Failed to auto-open imported record:', err);
                 showToast('Saved — find it in your Completed Reports list below.', 'info');
@@ -737,6 +750,7 @@ function openAssessmentForm(record = null, adminCreatedNew = false) {
         document.getElementById('participantName').value = record.metadata.participantName;
         document.getElementById('participantDept').value = record.metadata.participantDept;
         document.getElementById('assessmentDate').value  = record.metadata.assessmentDate;
+        document.getElementById('supervisorAssessEmployeeName').value = record.metadata.participantName || '';
 
         // Likert answers
         Object.entries(record.responses || {}).forEach(([key, val]) => {
@@ -948,6 +962,8 @@ function handleFormSubmit(e) {
 
     // ---- MANAGER SUBMISSION (Stages 4-5, then forward to Admin) ----
     if (isManagerMode) {
+        const employeeName = document.getElementById('supervisorAssessEmployeeName').value.trim() || 'Unknown';
+
         const ratings = {};
         supervisorCompetencies.forEach(comp => {
             const chk = assessmentForm.querySelector(`input[name="${comp.key}"]:checked`);
@@ -976,19 +992,25 @@ function handleFormSubmit(e) {
             customAfter:  parseNum('kpiCustomAfter')
         };
 
-        const record = assessments.find(a => a.id === id);
-        if (!record) { showToast('⚠ Could not find this record locally.', 'error'); return; }
+        // Standalone record — no existing employee submission involved.
+        // Supervisor never sees or references the employee's own answers (Phase 2 requirement).
+        // Merging this with the employee's Sections A-D self-assessment is Phase 3 (final analysis).
+        const record = {
+            id,
+            type:   'supervisor_only',
+            status: 'completed',
+            employeeName,
+            supervisor:  supervisorData,
+            kpis:        kpiData,
+            submittedAt: new Date().toISOString()
+        };
 
-        record.status     = 'completed';
-        record.supervisor = supervisorData;
-        record.kpis       = kpiData;
-
+        assessments.push(record);
         saveAssessments();
-        showToast('✓ Review complete! Sending final report to Admin...', 'success');
+        showToast('✓ Assessment complete! Sending to Admin...', 'success');
 
-        // Forward the now-completed record to the Admin (dad) — he only ever sees finished reports
-        sendAssessmentEmail(record, ADMIN_EMAIL);
-        showManagerThankYou(record);
+        sendAssessmentEmail(record, ADMIN_EMAIL, 'supervisor');
+        showManagerThankYou(employeeName);
         return;
     }
 
@@ -1057,7 +1079,7 @@ function handleFormSubmit(e) {
 // SAAS DASHBOARD METRICS
 // ============================================================
 function calculateSaaSMetrics() {
-    const completed = assessments.filter(a => a.status === 'completed');
+    const completed = assessments.filter(a => a.status === 'completed' && a.type !== 'supervisor_only');
     document.getElementById('statsTotal').innerText = assessments.length;
 
     if (completed.length === 0) {
@@ -1585,7 +1607,7 @@ function exportToPDF() {
 //   2) Manager submits -> emails the ADMIN, dad         (record.status = 'completed')
 // The recipient just clicks the link in their email — it opens the app,
 // auto-imports the record, and prompts for the correct role passcode.
-function sendAssessmentEmail(record, recipientEmail) {
+function sendAssessmentEmail(record, recipientEmail, kind = 'employee') {
     const payload    = unicodeStringToBase64(JSON.stringify(record));
     const importUrl  = `${window.location.origin}${window.location.pathname}?import=${encodeURIComponent(payload)}`;
 
@@ -1601,14 +1623,28 @@ function sendAssessmentEmail(record, recipientEmail) {
         return;
     }
 
-    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        to_email:          recipientEmail,
-        participant_name:  record.metadata.participantName || 'Unknown',
-        participant_dept:  record.metadata.participantDept || '—',
-        training_title:    record.metadata.trainingTitle   || '—',
-        assessment_date:   record.metadata.assessmentDate  || '—',
-        access_code:       importUrl   // clickable link — opens app, auto-imports, then asks for the right passcode
-    }).then(() => {
+    // Supervisor-only records have no `metadata` block (no training/department/dates —
+    // the supervisor never touches the employee's own submission). Map fields safely
+    // for either record shape so this single template/function covers both flows.
+    const templateParams = kind === 'supervisor'
+        ? {
+            to_email:          recipientEmail,
+            participant_name:  `${record.employeeName} (Supervisor Assessment)`,
+            participant_dept:  record.supervisor?.name ? `Supervisor: ${record.supervisor.name}` : '—',
+            training_title:    'Supervisor-Only Assessment',
+            assessment_date:   (record.submittedAt || '').slice(0, 10) || '—',
+            access_code:       importUrl
+        }
+        : {
+            to_email:          recipientEmail,
+            participant_name:  record.metadata?.participantName || 'Unknown',
+            participant_dept:  record.metadata?.participantDept || '—',
+            training_title:    record.metadata?.trainingTitle   || '—',
+            assessment_date:   record.metadata?.assessmentDate  || '—',
+            access_code:       importUrl   // clickable link — opens app, auto-imports, then asks for the right passcode
+        };
+
+    emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, templateParams).then(() => {
         console.log(`Assessment emailed to ${recipientEmail} successfully.`);
     }).catch(err => {
         console.error('EmailJS send failed:', err);
