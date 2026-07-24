@@ -128,33 +128,20 @@
         </section>
 
         <!-- VIEW: MANAGER PORTAL — department picker, then per-department pending list -->
+        <!-- SUPERVISOR PORTAL — no employee data visible, just type a name and assess -->
         <section id="managerDeptView" class="app-view">
-            <div class="card card-accent-emerald" style="max-width: 700px; margin: 40px auto;">
-                <h3 class="card-title">Select Your Department</h3>
+            <div class="card card-accent-emerald" style="max-width: 600px; margin: 40px auto;">
+                <h3 class="card-title">Supervisor Assessment</h3>
                 <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
-                    Choose the department you manage. You'll only see pending assessments for that department.
+                    Enter the name of the employee you're assessing, then answer the questions that apply to their performance.
                 </p>
-                <div id="managerDeptList" style="display: flex; flex-direction: column; gap: 10px;">
-                    <!-- Populated dynamically -->
+                <div class="form-group">
+                    <label for="supervisorPortalEmployeeName">Employee Full Name</label>
+                    <input type="text" id="supervisorPortalEmployeeName" class="form-control" placeholder="e.g. Jane Doe">
                 </div>
-                <div id="managerDeptEmptyState" style="display:none; text-align:center; padding: 30px 0; color: var(--text-secondary);">
-                    No pending assessments right now. Check back after employees submit.
-                </div>
-            </div>
-        </section>
-
-        <section id="managerEmployeeListView" class="app-view">
-            <div class="card card-accent-emerald" style="max-width: 700px; margin: 40px auto;">
-                <div style="display:flex; justify-content: space-between; align-items:center; margin-bottom: 10px;">
-                    <h3 class="card-title" id="managerDeptTitle" style="margin-bottom:0;">Department</h3>
-                    <button id="managerBackToDeptBtn" class="btn btn-secondary btn-sm">← Departments</button>
-                </div>
-                <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
-                    Pending assessments awaiting your review. Click one to complete Stages 4-5.
-                </p>
-                <div id="managerEmployeeList" style="display: flex; flex-direction: column; gap: 10px;">
-                    <!-- Populated dynamically -->
-                </div>
+                <button id="supervisorPortalBeginBtn" class="btn btn-success btn-lg" style="width: 100%; margin-top: 15px;">
+                    Begin Assessment
+                </button>
             </div>
         </section>
 
@@ -311,6 +298,10 @@
                         
                         <div class="form-group-row">
                             <div class="form-group">
+                                <label for="supervisorAssessEmployeeName">Employee Full Name</label>
+                                <input type="text" id="supervisorAssessEmployeeName" class="form-control" placeholder="Who are you assessing?">
+                            </div>
+                            <div class="form-group">
                                 <label for="supervisorName">Supervisor Name</label>
                                 <input type="text" id="supervisorName" class="form-control" placeholder="Supervisor's Full Name">
                             </div>
@@ -452,6 +443,49 @@
         </section>
 
         <!-- VIEW 3: ANALYSIS REPORT DASHBOARD -->
+        <!-- VIEW: SUPERVISOR-ONLY REPORT — simple, no employee self-assessment data involved -->
+        <section id="supervisorReportView" class="app-view">
+            <div class="card card-accent-indigo" style="max-width: 800px; margin: 40px auto;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 25px;">
+                    <h3 class="card-title" style="margin-bottom:0;">Supervisor Assessment Report</h3>
+                    <button id="backToReportsFromSupervisorBtn" class="btn btn-secondary btn-sm">← Completed Reports</button>
+                </div>
+
+                <div class="form-group-row" style="margin-bottom: 25px;">
+                    <div class="form-group">
+                        <label>Employee</label>
+                        <p id="svEmployeeName" class="sv-value">—</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Supervisor</label>
+                        <p id="svSupervisorName" class="sv-value">—</p>
+                    </div>
+                    <div class="form-group">
+                        <label>Date Submitted</label>
+                        <p id="svSubmittedDate" class="sv-value">—</p>
+                    </div>
+                </div>
+
+                <h4 class="sv-section-title">Competency Ratings</h4>
+                <table class="sv-table">
+                    <thead><tr><th>Competency</th><th>Rating (1-5)</th></tr></thead>
+                    <tbody id="svRatingsTableRows"></tbody>
+                </table>
+
+                <h4 class="sv-section-title">Observed Change &amp; Performance</h4>
+                <p><strong>Observed measurable change:</strong> <span id="svObservedChange">—</span></p>
+                <p><strong>Improved performance:</strong> <span id="svImprovedPerformance">—</span></p>
+                <p><strong>Comments:</strong></p>
+                <p id="svComments" class="sv-comments">—</p>
+
+                <h4 class="sv-section-title">Business KPIs</h4>
+                <table class="sv-table">
+                    <thead><tr><th>Metric</th><th>Before</th><th>After</th><th>Change</th></tr></thead>
+                    <tbody id="svKpiTableRows"></tbody>
+                </table>
+            </div>
+        </section>
+
         <section id="analysisView" class="app-view">
             <div class="assessment-list-header">
                 <h2>Sylver Consulting Impact Report</h2>
@@ -668,7 +702,7 @@
         <div class="modal-content card card-accent-indigo">
             <h3 class="card-title">Authentication</h3>
             <p style="color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9rem;">
-                Enter your Manager or Admin passcode to continue.
+                Enter your Supervisor or Admin passcode to continue.
             </p>
             <div class="form-group">
                 <label for="passcodeInput">Security Code</label>
