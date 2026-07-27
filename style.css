@@ -761,6 +761,33 @@ header {
     }
 }
 
+/* ========================================== */
+/* PDF CAPTURE FIXES                           */
+/* ========================================== */
+/* FIX: .dashboard-grid's "1fr" column depends on available width, which
+   html2canvas can compute differently than the live browser when cloning
+   the page for capture — causing charts/columns to render distorted or
+   clipped. Forcing an explicit, known pixel width during export removes
+   that ambiguity entirely (JS toggles this class on/off around the capture).
+   Only applied to the employee report — the supervisor report sits inside
+   a fixed-width card with overflow:hidden and never had this bug. */
+#reportCaptureArea.pdf-capturing {
+    width: 1100px !important;
+    max-width: 1100px !important;
+    grid-template-columns: 320px 1fr !important;
+}
+
+/* FIX: prevent any single card/chart from being sliced across a PDF page
+   break — without this, html2pdf's pagination cuts straight through
+   whatever happens to sit at the page boundary, mid-chart or mid-card. */
+.card,
+.overall-dial-card,
+.chart-card,
+.summary-block-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+}
+
 .sidebar-summary {
     display: flex;
     flex-direction: column;
@@ -1406,6 +1433,46 @@ header {
     padding: 3px 10px;
     font-size: 0.75rem;
     font-weight: 700;
+}
+
+.report-delete-btn {
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #ef4444;
+    border-radius: 8px;
+    width: 32px;
+    height: 32px;
+    font-size: 0.95rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, border-color 0.15s ease;
+    flex-shrink: 0;
+}
+
+.report-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.5);
+}
+
+/* ========================================== */
+/* PDF PAGE-BREAK FIX                          */
+/* ========================================== */
+/* Scoped ONLY to the two PDF capture areas — no effect anywhere else on the
+   site. Prevents html2pdf's auto-pagination from slicing a card or chart in
+   half across a page boundary; the whole block moves to the next page
+   instead if it doesn't fit on the current one. */
+#reportCaptureArea .overall-dial-card,
+#reportCaptureArea .card,
+#reportCaptureArea .chart-card,
+#reportCaptureArea .summary-block-card,
+#supervisorReportCaptureArea .form-group-row,
+#supervisorReportCaptureArea .sv-chart-wrap,
+#supervisorReportCaptureArea .sv-table,
+#supervisorReportCaptureArea h4.sv-section-title {
+    break-inside: avoid;
+    page-break-inside: avoid;
 }
 
 /* ========================================== */
