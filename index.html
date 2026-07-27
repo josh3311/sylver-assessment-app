@@ -448,41 +448,57 @@
             <div class="card card-accent-indigo" style="max-width: 800px; margin: 40px auto;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 25px;">
                     <h3 class="card-title" style="margin-bottom:0;">Supervisor Assessment Report</h3>
-                    <button id="backToReportsFromSupervisorBtn" class="btn btn-secondary btn-sm">← Completed Reports</button>
-                </div>
-
-                <div class="form-group-row" style="margin-bottom: 25px;">
-                    <div class="form-group">
-                        <label>Employee</label>
-                        <p id="svEmployeeName" class="sv-value">—</p>
-                    </div>
-                    <div class="form-group">
-                        <label>Supervisor</label>
-                        <p id="svSupervisorName" class="sv-value">—</p>
-                    </div>
-                    <div class="form-group">
-                        <label>Date Submitted</label>
-                        <p id="svSubmittedDate" class="sv-value">—</p>
+                    <div style="display:flex; gap:10px;">
+                        <button id="backToReportsFromSupervisorBtn" class="btn btn-secondary btn-sm">← Completed Reports</button>
+                        <button id="deleteSupervisorReportBtn" class="btn btn-secondary btn-sm" style="color:#ef4444; border-color: rgba(239,68,68,0.4);">Delete</button>
+                        <button id="downloadSupervisorPdfBtn" class="btn btn-primary btn-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
+                            Download PDF
+                        </button>
                     </div>
                 </div>
 
-                <h4 class="sv-section-title">Competency Ratings</h4>
-                <table class="sv-table">
-                    <thead><tr><th>Competency</th><th>Rating (1-5)</th></tr></thead>
-                    <tbody id="svRatingsTableRows"></tbody>
-                </table>
+                <!-- This exact wrapper is what gets captured for PDF export — WYSIWYG, same colors, same layout -->
+                <div id="supervisorReportCaptureArea">
+                    <div class="form-group-row" style="margin-bottom: 25px;">
+                        <div class="form-group">
+                            <label>Employee</label>
+                            <p id="svEmployeeName" class="sv-value">—</p>
+                        </div>
+                        <div class="form-group">
+                            <label>Supervisor</label>
+                            <p id="svSupervisorName" class="sv-value">—</p>
+                        </div>
+                        <div class="form-group">
+                            <label>Date Submitted</label>
+                            <p id="svSubmittedDate" class="sv-value">—</p>
+                        </div>
+                    </div>
 
-                <h4 class="sv-section-title">Observed Change &amp; Performance</h4>
-                <p><strong>Observed measurable change:</strong> <span id="svObservedChange">—</span></p>
-                <p><strong>Improved performance:</strong> <span id="svImprovedPerformance">—</span></p>
-                <p><strong>Comments:</strong></p>
-                <p id="svComments" class="sv-comments">—</p>
+                    <h4 class="sv-section-title">Competency Ratings</h4>
+                    <div class="sv-chart-wrap" style="position: relative; height: 260px; margin-bottom: 20px;">
+                        <canvas id="svRatingsChart"></canvas>
+                    </div>
+                    <table class="sv-table">
+                        <thead><tr><th>Competency</th><th>Rating (1-5)</th></tr></thead>
+                        <tbody id="svRatingsTableRows"></tbody>
+                    </table>
 
-                <h4 class="sv-section-title">Business KPIs</h4>
-                <table class="sv-table">
-                    <thead><tr><th>Metric</th><th>Before</th><th>After</th><th>Change</th></tr></thead>
-                    <tbody id="svKpiTableRows"></tbody>
-                </table>
+                    <h4 class="sv-section-title">Observed Change &amp; Performance</h4>
+                    <p><strong>Observed measurable change:</strong> <span id="svObservedChange">—</span></p>
+                    <p><strong>Improved performance:</strong> <span id="svImprovedPerformance">—</span></p>
+                    <p><strong>Comments:</strong></p>
+                    <p id="svComments" class="sv-comments">—</p>
+
+                    <h4 class="sv-section-title">Business KPIs</h4>
+                    <div class="sv-chart-wrap" style="position: relative; height: 260px; margin-bottom: 20px; display:none;" id="svKpiChartWrap">
+                        <canvas id="svKpiChart"></canvas>
+                    </div>
+                    <table class="sv-table">
+                        <thead><tr><th>Metric</th><th>Before</th><th>After</th><th>Change</th></tr></thead>
+                        <tbody id="svKpiTableRows"></tbody>
+                    </table>
+                </div>
             </div>
         </section>
 
@@ -495,6 +511,7 @@
                         Dashboard
                     </button>
                     <button id="editAssessmentBtn" class="btn btn-secondary">Edit</button>
+                    <button id="deleteReportBtn" class="btn btn-secondary" style="color:#ef4444; border-color: rgba(239,68,68,0.4);">Delete</button>
                     <button id="downloadPdfBtn" class="btn btn-primary">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" x2="12" y1="15" y2="3"></line></svg>
                         Download PDF
@@ -503,7 +520,8 @@
             </div>
 
             <!-- Screen Dashboard Layout -->
-            <div class="dashboard-grid">
+            <!-- This exact wrapper is what gets captured for PDF export — WYSIWYG, same colors, same layout -->
+            <div class="dashboard-grid" id="reportCaptureArea">
                 <!-- Sidebar: Balanced Scorecard & Index Details -->
                 <div class="sidebar-summary">
                     <!-- Score Gauge -->
