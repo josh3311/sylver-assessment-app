@@ -95,6 +95,7 @@ let activeStage  = 1;
 let isAdminMode  = false;
 let isManagerMode = false;
 let pendingImportRecord = null;   // holds a record just pulled in via ?import= (dad's remote email link) until passcode is entered
+let currentSupervisorReportId = null;   // tracks which supervisor-only record is currently on screen, for the Delete button
 // (no longer used — Supervisor Portal is now a standalone form, not a department queue)
 let chartInstances = {};
 
@@ -320,7 +321,10 @@ function renderAdminReports() {
                     <div class="manager-row-title">${escapeHtml(r.employeeName || 'Unknown')}</div>
                     <div class="manager-row-sub">Supervisor: ${escapeHtml(r.supervisor?.name || '—')} — ${(r.submittedAt || '').slice(0,10)}</div>
                 </div>
-                <span class="status-badge completed" style="background: rgba(99,102,241,0.15); color:#818cf8;">Supervisor Assessment</span>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span class="status-badge completed" style="background: rgba(99,102,241,0.15); color:#818cf8;">Supervisor Assessment</span>
+                    <button class="report-delete-btn" title="Delete this record" data-id="${r.id}">🗑</button>
+                </div>
             `;
             row.addEventListener('click', () => {
                 try {
@@ -329,6 +333,10 @@ function renderAdminReports() {
                     console.error('Failed to open supervisor report', r.id, err);
                     showToast('⚠ Could not open this report — the record may be corrupted.', 'error');
                 }
+            });
+            row.querySelector('.report-delete-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteAdminRecord(r.id, r.employeeName || 'this record');
             });
             list.appendChild(row);
             return;
@@ -355,7 +363,10 @@ function renderAdminReports() {
                 <div class="manager-row-title">${escapeHtml(r.metadata.participantName || 'Unknown')}</div>
                 <div class="manager-row-sub">${escapeHtml(r.metadata.participantDept || '—')} — ${r.metadata.assessmentDate || ''}</div>
             </div>
-            ${badge}
+            <div style="display:flex; align-items:center; gap:10px;">
+                ${badge}
+                <button class="report-delete-btn" title="Delete this record" data-id="${r.id}">🗑</button>
+            </div>
         `;
         row.addEventListener('click', () => {
             try {
@@ -365,8 +376,22 @@ function renderAdminReports() {
                 showToast('⚠ Could not open this report — the record may be corrupted.', 'error');
             }
         });
+        row.querySelector('.report-delete-btn').addEventListener('click', (e) => {
+            e.stopPropagation();
+            deleteAdminRecord(r.id, r.metadata.participantName || 'this record');
+        });
         list.appendChild(row);
     });
+}
+
+// Deletes any record (employee submission, pending, or supervisor-only) so the
+// admin can clear old data and reuse the site fresh for a new client/company.
+function deleteAdminRecord(id, label) {
+    if (!confirm(`Delete the record for "${label}"? This cannot be undone.`)) return;
+    assessments = assessments.filter(a => a.id !== id);
+    saveAssessments();
+    renderAdminReports();
+    showToast('✓ Record deleted.', 'success');
 }
 
 // ============================================================
@@ -376,6 +401,7 @@ function renderAdminReports() {
 // submission, not merged with the employee's own self-assessment.
 // Combining the two into one full analysis is Phase 3 (deferred).
 function showSupervisorReport(record) {
+    currentSupervisorReportId = record.id;
     document.getElementById('svEmployeeName').innerText    = record.employeeName || '—';
     document.getElementById('svSupervisorName').innerText  = record.supervisor?.name || '—';
     document.getElementById('svSubmittedDate').innerText   = (record.submittedAt || '').slice(0, 10) || '—';
@@ -388,20 +414,50 @@ function showSupervisorReport(record) {
         ratingsBody.innerHTML += `<tr><td>${escapeHtml(comp.label)}</td><td>${val ?? '—'}</td></tr>`;
     });
 
+    // Competency ratings bar chart — destroy any leftover instance first (same lesson as the PDF fix)
+    const svRatingsExisting = Chart.getChart('svRatingsChart');
+    if (svRatingsExisting) svRatingsExisting.destroy();
+    new Chart(document.getElementById('svRatingsChart'), {
+        type: 'bar',
+        data: {
+            labels: supervisorCompetencies.map(c => c.label),
+            datasets: [{
+                label: 'Rating (1-5)',
+                data: supervisorCompetencies.map(c => record.supervisor?.ratings?.[c.key] || 0),
+                backgroundColor: '#818cf8',
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { min: 0, max: 5, ticks: { color: '#9ca3af', stepSize: 1 }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                x: { ticks: { color: '#9ca3af', maxRotation: 30, minRotation: 0 }, grid: { display: false } }
+            }
+        }
+    });
+
     document.getElementById('svObservedChange').innerText      = record.supervisor?.observedChange      || '—';
     document.getElementById('svImprovedPerformance').innerText = record.supervisor?.improvedPerformance || '—';
     document.getElementById('svComments').innerText            = record.supervisor?.comments || 'No comments provided.';
 
-    // KPI table
+    // KPI table + chart
     const kpiBody = document.getElementById('svKpiTableRows');
     kpiBody.innerHTML = '';
     const k = record.kpis || {};
+    const kpiChartLabels = [];
+    const kpiChartBefore = [];
+    const kpiChartAfter  = [];
     const addRow = (label, b, a) => {
         if (b === null || b === undefined || a === null || a === undefined) return;
         const pct = b > 0 ? ((a - b) / b * 100) : 0;
         const color = pct > 0 ? '#34d399' : (pct < 0 ? '#ef4444' : 'var(--text-secondary)');
         kpiBody.innerHTML += `<tr><td>${label}</td><td>${b}</td><td>${a}</td>
             <td style="color:${color};font-weight:700;">${pct > 0 ? '+' : ''}${pct.toFixed(0)}%</td></tr>`;
+        kpiChartLabels.push(label);
+        kpiChartBefore.push(b);
+        kpiChartAfter.push(a);
     };
     addRow('Sales ($)', k.salesBefore, k.salesAfter);
     addRow('New Customers', k.custBefore, k.custAfter);
@@ -409,6 +465,33 @@ function showSupervisorReport(record) {
     addRow('Target Achieved (%)', k.targetBefore, k.targetAfter);
     if (k.customBefore != null) addRow(k.customName || 'Custom KPI', k.customBefore, k.customAfter);
     if (!kpiBody.innerHTML) kpiBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);">No KPI metrics recorded</td></tr>';
+
+    const kpiWrap = document.getElementById('svKpiChartWrap');
+    const svKpiExisting = Chart.getChart('svKpiChart');
+    if (svKpiExisting) svKpiExisting.destroy();
+    if (kpiChartLabels.length) {
+        kpiWrap.style.display = 'block';
+        new Chart(document.getElementById('svKpiChart'), {
+            type: 'bar',
+            data: {
+                labels: kpiChartLabels,
+                datasets: [
+                    { label: 'Before', data: kpiChartBefore, backgroundColor: '#4b5563', borderRadius: 6 },
+                    { label: 'After',  data: kpiChartAfter,  backgroundColor: '#34d399', borderRadius: 6 }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { labels: { color: '#9ca3af' } } },
+                scales: {
+                    y: { ticks: { color: '#9ca3af' }, grid: { color: 'rgba(255,255,255,0.06)' } },
+                    x: { ticks: { color: '#9ca3af' }, grid: { display: false } }
+                }
+            }
+        });
+    } else {
+        kpiWrap.style.display = 'none';
+    }
 
     switchView(document.getElementById('supervisorReportView'));
 }
@@ -560,6 +643,20 @@ function setupEventListeners() {
     document.getElementById('backToReportsFromSupervisorBtn').addEventListener('click', () => enterAdminPortal(false));
     document.getElementById('editAssessmentBtn').addEventListener('click', handleEditAssessment);
     document.getElementById('downloadPdfBtn').addEventListener('click', exportToPDF);
+    document.getElementById('deleteReportBtn').addEventListener('click', () => {
+        const id = document.getElementById('assessmentId').value;
+        const rec = assessments.find(a => a.id === id);
+        if (!rec) return;
+        deleteAdminRecord(id, rec.metadata?.participantName || 'this record');
+        enterAdminPortal(false);
+    });
+    document.getElementById('deleteSupervisorReportBtn').addEventListener('click', () => {
+        if (!currentSupervisorReportId) return;
+        const rec = assessments.find(a => a.id === currentSupervisorReportId);
+        deleteAdminRecord(currentSupervisorReportId, rec?.employeeName || 'this record');
+        enterAdminPortal(false);
+    });
+    document.getElementById('downloadSupervisorPdfBtn').addEventListener('click', exportSupervisorToPDF);
 
     // Import / Export
     document.getElementById('exportAllBtn').addEventListener('click', exportAllData);
@@ -1410,192 +1507,101 @@ function drawEmpty(canvasId, text) {
 // ============================================================
 // PDF EXPORT — DEDICATED PRINT LAYOUT ENGINE
 // ============================================================
+// ============================================================
+// PDF EXPORT — WYSIWYG capture of the actual visible report
+// ============================================================
+// Instead of maintaining a separate hidden print-template (which kept
+// producing blank/incomplete PDFs across many attempts), this captures
+// the report exactly as it's already rendered on screen — same dark
+// theme, same colors, same charts, same layout. What you see is what
+// downloads. Works for both the employee report and the supervisor report.
+function captureElementToPDF(elementId, filename) {
+    const el = document.getElementById(elementId);
+    if (!el) {
+        showToast('⚠ Could not find the report content to export.', 'error');
+        return;
+    }
+
+    // Only the employee report needs the fixed-width lock (that's where the
+    // grid distortion bug was). The supervisor report's natural width, inside
+    // its own card, is already stable and correct.
+    const isEmployeeReport = elementId === 'reportCaptureArea';
+    const captureWidth = isEmployeeReport ? 1100 : el.scrollWidth;
+
+    // FIX: the full-screen loading overlay (#pdfGeneratingOverlay) is `position: fixed`
+    // covering the whole viewport. html2canvas renders relative to the viewport when
+    // given a custom width, so that fixed overlay was bleeding straight into the
+    // captured screenshot as a solid dark rectangle. The toast notification below is
+    // enough loading feedback on its own and doesn't have this problem.
+    showToast('Generating PDF... this may take a few seconds', 'info');
+
+    if (isEmployeeReport) el.classList.add('pdf-capturing');
+    el.querySelectorAll('canvas').forEach(canvas => {
+        const chart = Chart.getChart(canvas);
+        if (chart) chart.resize();
+    });
+
+    function cleanup() {
+        if (isEmployeeReport) el.classList.remove('pdf-capturing');
+        el.querySelectorAll('canvas').forEach(canvas => {
+            const chart = Chart.getChart(canvas);
+            if (chart) chart.resize();   // put charts back to their normal on-screen size
+        });
+    }
+
+    // Delay lets the forced resize + any chart animation finish painting before capture
+    setTimeout(() => {
+        try {
+            html2pdf()
+                .set({
+                    margin: [8, 8],
+                    filename,
+                    image: { type: 'jpeg', quality: 1.0 },
+                    html2canvas: {
+                        scale: 2,
+                        useCORS: true,
+                        allowTaint: true,
+                        logging: false,
+                        backgroundColor: '#0b0f19',   // matches the app's dark theme exactly
+                        windowWidth: captureWidth,     // matches the locked width — no ambiguity
+                        width: captureWidth
+                    },
+                    jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                    pagebreak: {
+                        mode: ['avoid-all', 'css', 'legacy'],
+                        avoid: ['.card', '.overall-dial-card', '.chart-card', '.summary-block-card', 'canvas', 'table', '.sv-table']
+                    }
+                })
+                .from(el)
+                .save()
+                .then(() => {
+                    cleanup();
+                    showToast('✓ PDF downloaded successfully!', 'success');
+                })
+                .catch(err => {
+                    console.error('PDF Export Error:', err);
+                    cleanup();
+                    showToast('⚠ PDF export failed: ' + (err.message || 'Unknown error'), 'error');
+                });
+        } catch (err) {
+            console.error('PDF Export Error (setup phase):', err);
+            cleanup();
+            showToast('⚠ PDF export failed to start: ' + (err.message || 'Unknown error'), 'error');
+        }
+    }, 400);
+}
+
 function exportToPDF() {
     const id  = document.getElementById('assessmentId').value;
     const rec = assessments.find(a => a.id === id);
-    if (!rec) return;
+    const name = (rec?.metadata?.participantName || 'Report').replace(/\s+/g, '_');
+    captureElementToPDF('reportCaptureArea', `SPTIA_${name}.pdf`);
+}
 
-    const s = calculateAssessmentScores(rec);
-    const printEl = document.getElementById('pdfPrintContainer');
-    const overlay = document.getElementById('pdfGeneratingOverlay');
-
-    // FIX: make the container genuinely visible on-screen BEFORE anything else —
-    // charts must be created while it has real, non-zero dimensions, not after.
-    // The opaque overlay covers it the whole time so the user only sees a spinner.
-    printEl.classList.add('pdf-exporting');
-    overlay.classList.add('active');
-
-    // --- Populate text fields ---
-    document.getElementById('pdfMetaParticipant').innerText = rec.metadata.participantName;
-    document.getElementById('pdfMetaDept').innerText        = rec.metadata.participantDept;
-    document.getElementById('pdfMetaDate').innerText        = rec.metadata.assessmentDate;
-    document.getElementById('pdfMetaSupervisor').innerText  = rec.supervisor?.name || '—';
-
-    document.getElementById('pdfOverallScore').innerText = `${s.overallScore.toFixed(0)}%`;
-    const ratingEl = document.getElementById('pdfOverallRating');
-    ratingEl.innerText = s.interpretation;
-
-    const ratingColors = {
-        'rating-exceptional': ['#d1fae5','#065f46'],
-        'rating-high':        ['#e0f2fe','#075985'],
-        'rating-good':        ['#fef3c7','#92400e'],
-        'rating-moderate':    ['#fee2e2','#991b1b'],
-        'rating-improvement': ['#fee2e2','#991b1b']
-    };
-    const [bg, col] = ratingColors[s.badgeClass] || ['#f3f4f6','#374151'];
-    ratingEl.style.background = bg;
-    ratingEl.style.color      = col;
-
-    document.getElementById('pdfLti').innerText = `${s.lti.toFixed(0)}%`;
-    document.getElementById('pdfBci').innerText = `${s.bci.toFixed(0)}%`;
-    document.getElementById('pdfPii').innerText = `${s.pii.toFixed(0)}%`;
-    document.getElementById('pdfTei').innerText = `${s.tei.toFixed(0)}%`;
-    document.getElementById('pdfSvi').innerText = rec.supervisor ? `${s.svi.toFixed(0)}%` : 'N/A';
-    document.getElementById('pdfBii').innerText = s.bii > 0 ? `${s.bii.toFixed(0)}%` : 'N/A';
-
-    document.getElementById('pdfOpenQ1').innerText = rec.feedback?.openQ1 || 'No response provided.';
-    document.getElementById('pdfOpenQ2').innerText = rec.feedback?.openQ2 || 'No response provided.';
-
-    document.getElementById('pdfObservedChange').innerText      = rec.supervisor?.observedChange      || 'N/A';
-    document.getElementById('pdfImprovedPerformance').innerText = rec.supervisor?.improvedPerformance || 'N/A';
-    document.getElementById('pdfSupervisorComments').innerText  = rec.supervisor?.comments            || 'N/A';
-
-    // KPI table
-    const kpiBody = document.getElementById('pdfKpiTableRows');
-    kpiBody.innerHTML = '';
-    if (rec.kpis) {
-        const addRow = (label, b, a) => {
-            if (b === null || a === null) return;
-            const pct = b > 0 ? ((a-b)/b*100) : 0;
-            const col = pct > 0 ? '#10b981' : (pct < 0 ? '#ef4444' : '#374151');
-            kpiBody.innerHTML += `<tr><td>${label}</td><td>${b}</td><td>${a}</td>
-                <td style="color:${col};font-weight:700;">${pct>0?'+':''}${pct.toFixed(0)}%</td></tr>`;
-        };
-        if (rec.kpis.salesBefore !== null) addRow('Sales ($)', rec.kpis.salesBefore, rec.kpis.salesAfter);
-        addRow('New Customers',     rec.kpis.custBefore,   rec.kpis.custAfter);
-        addRow('Retention (%)',     rec.kpis.retBefore,    rec.kpis.retAfter);
-        addRow('Target Achieved (%)', rec.kpis.targetBefore, rec.kpis.targetAfter);
-        if (rec.kpis.customBefore !== null) addRow(rec.kpis.customName || 'Custom KPI', rec.kpis.customBefore, rec.kpis.customAfter);
-    }
-    if (!kpiBody.innerHTML) kpiBody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:#6b7280;">No KPI metrics recorded</td></tr>';
-
-    // --- Prepare the always-rendered print element for capture ---
-    clearPrintCharts(); // destroy any stale charts from previous exports
-
-    // --- Render static print-specific charts ---
-    const pc = []; // print charts to destroy after export
-    const PG = 'rgba(0,0,0,0.07)';
-    const PT = '#374151';
-
-
-    // Radar
-    if (rec.supervisor) {
-        pc.push(new Chart(document.getElementById('radarChartPrint'), {
-            type: 'radar',
-            data: { labels: supervisorCompetencies.map(c=>c.label),
-                datasets: [{ data: supervisorCompetencies.map(c=>rec.supervisor.ratings[c.key]||0),
-                    backgroundColor:'rgba(79,70,229,0.12)', borderColor:'#4f46e5', borderWidth:1.5,
-                    pointBackgroundColor:'#4f46e5', pointRadius:2 }] },
-            options: { animation:false, responsive:true, maintainAspectRatio:false,
-                scales: { r: { angleLines:{color:PG}, grid:{color:PG},
-                    pointLabels:{font:{family:'Outfit',size:8,weight:'bold'},color:PT},
-                    suggestedMin:0, suggestedMax:5, ticks:{display:false} } },
-                plugins:{legend:{display:false}} }
-        }));
-    } else { drawEmpty('radarChartPrint','No Supervisor Ratings'); }
-
-    // Bar
-    pc.push(new Chart(document.getElementById('barChartPrint'), {
-        type: 'bar',
-        data: { labels:['LTI','BCI','PII','TEI','SVI','BII'],
-            datasets:[{ data:[s.lti,s.bci,s.pii,s.tei,s.svi,s.bii],
-                backgroundColor:['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#6366f1'],
-                borderRadius:3 }] },
-        options: { animation:false, responsive:true, maintainAspectRatio:false,
-            scales:{ y:{min:0,max:100,grid:{color:PG},ticks:{font:{size:8},callback:v=>v+'%'}},
-                x:{grid:{display:false},ticks:{font:{size:8,weight:'bold'}}} },
-            plugins:{legend:{display:false}} }
-    }));
-
-    // KPI
-    const k = rec.kpis;
-    if (k) {
-        const kLabels=[], kBefore=[], kAfter=[];
-        if (k.salesBefore!==null){ kLabels.push('Sales'); kBefore.push(100); kAfter.push((k.salesAfter/k.salesBefore)*100); }
-        if (k.custBefore!==null)  { kLabels.push('Customers'); kBefore.push(k.custBefore); kAfter.push(k.custAfter); }
-        if (k.retBefore!==null)   { kLabels.push('Retention'); kBefore.push(k.retBefore); kAfter.push(k.retAfter); }
-        if (k.targetBefore!==null){ kLabels.push('Target'); kBefore.push(k.targetBefore); kAfter.push(k.targetAfter); }
-        if (k.customBefore!==null){ kLabels.push(k.customName||'Custom'); kBefore.push(k.customBefore); kAfter.push(k.customAfter); }
-
-        if (kLabels.length) {
-            pc.push(new Chart(document.getElementById('kpiChartPrint'), {
-                type: 'bar',
-                data: { labels:kLabels, datasets:[
-                    { label:'Before', data:kBefore, backgroundColor:'#d1d5db', borderRadius:2 },
-                    { label:'After',  data:kAfter,  backgroundColor:'#10b981', borderRadius:2 }
-                ]},
-                options:{ animation:false, responsive:true, maintainAspectRatio:false,
-                    scales:{y:{grid:{color:PG},ticks:{font:{size:8}}},x:{grid:{display:false},ticks:{font:{size:8,weight:'bold'}}}},
-                    plugins:{legend:{position:'bottom',labels:{boxWidth:8,font:{size:8}}}} }
-            }));
-        } else { drawEmpty('kpiChartPrint','No KPI Metrics'); }
-    } else { drawEmpty('kpiChartPrint','No KPI Metrics'); }
-
-    // Barriers
-    const barrs = (rec.barriers||[]).filter(b=>b!=='No barriers');
-    if (barrs.length) {
-        pc.push(new Chart(document.getElementById('barriersChartPrint'), {
-            type:'doughnut',
-            data:{ labels:barrs, datasets:[{ data:barrs.map(()=>1),
-                backgroundColor:['#ef4444','#f59e0b','#ec4899','#8b5cf6','#3b82f6','#10b981'],
-                borderColor:'#fff', borderWidth:1.5 }] },
-            options:{ animation:false, responsive:true, maintainAspectRatio:false, cutout:'60%',
-                plugins:{legend:{position:'right',labels:{boxWidth:8,font:{size:8}}}} }
-        }));
-    } else { drawEmpty('barriersChartPrint','No Barriers Encountered'); }
-
-    // --- BUG FIX #1: Proper async PDF export with feedback ---
-    // ISSUE: Old code showed loading state but didn't keep container visible
-    // during the async html2pdf() render process, causing blank PDFs
-    // FIX: Keep container visible, increase timeout for chart rendering,
-    // add proper success/error feedback, ensure charts fully render before export
-    
-    showToast('Generating PDF... This may take 10-15 seconds', 'info');
-    
-    // --- BUG FIX (final): render on-screen for capture, covered by opaque overlay ---
-    // Off-screen positioning (top:-9999px) was confirmed unreliable — html2canvas
-    // kept producing blank/incomplete output regardless of capture option overrides.
-    // Rendering the container genuinely on-screen (behind a solid loading cover)
-    // removes all ambiguity: html2canvas is capturing exactly what a normal,
-    // visible, fully-laid-out element looks like. (Container was already made
-    // visible at the top of this function, before charts were created.)
-    function cleanupPdfUI() {
-        printEl.classList.remove('pdf-exporting');
-        overlay.classList.remove('active');
-        pc.forEach(c => c.destroy());
-    }
-
-    setTimeout(() => {
-        html2pdf()
-            .set({
-                margin: 0,
-                filename: `SPTIA_${rec.metadata.participantName.replace(/\s+/g,'_')}.pdf`,
-                image: { type:'jpeg', quality:1.0 },
-                html2canvas: { scale:2.5, useCORS:true, logging:false, allowTaint:true },
-                jsPDF: { unit:'mm', format:'a4', orientation:'portrait' }
-            })
-            .from(printEl)
-            .save()
-            .then(() => {
-                cleanupPdfUI();
-                showToast('✓ PDF downloaded successfully!', 'success');
-            })
-            .catch(err => {
-                console.error('PDF Export Error:', err);
-                cleanupPdfUI();
-                showToast('⚠ PDF export failed: ' + (err.message || 'Unknown error'), 'error');
-            });
-    }, 800);  // Increased from 500ms to 800ms to allow full chart rendering
+function exportSupervisorToPDF() {
+    const rec = assessments.find(a => a.id === currentSupervisorReportId);
+    const name = (rec?.employeeName || 'Employee').replace(/\s+/g, '_');
+    captureElementToPDF('supervisorReportCaptureArea', `SPTIA_Supervisor_${name}.pdf`);
 }
 
 // ============================================================
