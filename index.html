@@ -146,19 +146,19 @@
         </section>
 
         <!-- VIEW 2: FORM ENTRY (MULTI-STAGE) -->
-        <!-- VIEW: SUBMISSION CLOSED — shown to employees only, after the deadline -->
+        <!-- VIEW: SUBMISSION CLOSED — shown to employees only, outside the submission window -->
         <section id="submissionClosedView" class="app-view">
             <div class="thank-you-card card card-accent-indigo">
                 <div class="success-icon" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b;">⏰</div>
-                <h2>Submission Window Closed</h2>
-                <p>The submission window for this assessment has closed.<br>Please contact your Sylver Consulting advisor if you believe this is an error.</p>
+                <h2 id="submissionClosedTitle">Submission Window Closed</h2>
+                <p id="submissionClosedMessage">The submission window for this assessment has closed.<br>Please contact your Sylver Consulting advisor if you believe this is an error.</p>
             </div>
         </section>
 
         <section id="formView" class="app-view active">
             <!-- Submission deadline notice — client mode only, hidden for Manager/Admin -->
             <div id="deadlineBanner" class="deadline-banner">
-                📅 Submissions close on <strong>Thursday, July 23, 2026</strong>. Please complete your assessment before then.
+                📅 Submissions are open <strong>Wednesday, July 29 – Friday, July 31, 2026 (1:59 PM)</strong>. Please complete your assessment within this window.
             </div>
 
             <!-- Stage Navigation -->
