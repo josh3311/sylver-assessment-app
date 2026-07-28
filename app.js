@@ -8,9 +8,10 @@ const ADMIN_PASSCODE   = 'Jesus1234';
 const MANAGER_PASSCODE = '12345';         // shared by all managers — change this to whatever you want
 const ADMIN_EMAIL      = 'brunonkengp@gmail.com';
 
-// Employees can no longer submit new assessments after this date/time.
+// Employees can only submit new assessments within this window.
 // Manager and Admin access are NOT affected by this — only the employee submission form.
-const SUBMISSION_DEADLINE = new Date('2026-07-23T23:59:59');
+const SUBMISSION_START    = new Date('2026-07-29T00:00:00');
+const SUBMISSION_DEADLINE = new Date('2026-07-31T13:59:00');
 
 // --- EmailJS Config (silent background delivery to advisor) ---
 const EMAILJS_PUBLIC_KEY  = '4mLZceB-FggPGIMpw';
@@ -204,9 +205,20 @@ function enterClientMode() {
     document.getElementById('headerSubtitle').innerText = 'Client Assessment Form';
     document.getElementById('deadlineBanner').style.display = 'block';
 
-    // Submission deadline check — employees only. Manager/Admin login (header button)
+    // Submission window check — employees only. Manager/Admin login (header button)
     // remains available regardless, since it's outside this view entirely.
-    if (new Date() > SUBMISSION_DEADLINE) {
+    const now = new Date();
+    if (now < SUBMISSION_START) {
+        document.getElementById('submissionClosedTitle').innerText = 'Submissions Not Yet Open';
+        document.getElementById('submissionClosedMessage').innerHTML =
+            'This assessment opens on <strong>Wednesday, July 29, 2026</strong>.<br>Please check back then.';
+        switchView(document.getElementById('submissionClosedView'));
+        return;
+    }
+    if (now > SUBMISSION_DEADLINE) {
+        document.getElementById('submissionClosedTitle').innerText = 'Submission Window Closed';
+        document.getElementById('submissionClosedMessage').innerHTML =
+            'The submission window for this assessment has closed.<br>Please contact your Sylver Consulting advisor if you believe this is an error.';
         switchView(document.getElementById('submissionClosedView'));
         return;
     }
@@ -1018,10 +1030,17 @@ function handleFormSubmit(e) {
 
     // ---- CLIENT SUBMISSION ----
     if (!isAdminMode && !isManagerMode) {
-        // Safety check: form may have been left open across the deadline boundary
-        if (new Date() > SUBMISSION_DEADLINE) {
+        // Safety check: form may have been left open across a window boundary
+        const now = new Date();
+        if (now < SUBMISSION_START || now > SUBMISSION_DEADLINE) {
+            document.getElementById('submissionClosedTitle').innerText =
+                now < SUBMISSION_START ? 'Submissions Not Yet Open' : 'Submission Window Closed';
+            document.getElementById('submissionClosedMessage').innerHTML =
+                now < SUBMISSION_START
+                    ? 'This assessment opens on <strong>Wednesday, July 29, 2026</strong>.<br>Please check back then.'
+                    : 'The submission window for this assessment has closed.<br>Please contact your Sylver Consulting advisor if you believe this is an error.';
             switchView(document.getElementById('submissionClosedView'));
-            showToast('The submission window has closed.', 'warning');
+            showToast('The submission window is not currently open.', 'warning');
             return;
         }
 
